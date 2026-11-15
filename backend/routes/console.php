@@ -1,8 +1,12 @@
 <?php
 
+use App\Domain\Catalog\CatalogImporter;
 use App\Domain\Payments\PaymentService;
 use App\Domain\Payments\PaymentStatus;
+use App\Domain\Shared\AuditLogger;
+use App\Domain\Shared\DomainException;
 use App\Models\Cart;
+use App\Models\ContentPage;
 use App\Models\IdempotencyKey;
 use App\Models\Order;
 use App\Models\Payment;
@@ -70,3 +74,44 @@ Artisan::command('mk:flag-test-orders {--first-name=E2E}', function () {
 
     return 0;
 })->purpose('Marquer les commandes créées par les tests E2E (environnements hors production)');
+
+/** Import du catalogue depuis le modèle CSV (brouillons par défaut, aucune suppression). */
+Artisan::command('mk:import-catalogue {file} {--publish : publier immédiatement les produits importés} {--dry-run : vérifier sans rien enregistrer}', function (CatalogImporter $importer) {
+    try {
+        $report = $importer->import($this->argument('file'), (bool) $this->option('publish'), (bool) $this->option('dry-run'));
+    } catch (DomainException $e) {
+        $this->error($e->getMessage());
+
+        return 1;
+    }
+    $this->table(['Produits créés', 'Produits mis à jour', 'Formats créés', 'Formats mis à jour'], [[
+        $report['products_created'], $report['products_updated'], $report['variants_created'], $report['variants_updated'],
+    ]]);
+    $this->info($report['dry_run'] ? 'Simulation : rien n\'a été enregistré.' : 'Import enregistré. Les nouveaux produits sont en brouillon : vérifiez-les puis publiez-les dans le back-office.');
+
+    return 0;
+})->purpose('Importer le catalogue depuis un fichier CSV');
+
+/** Charge un texte (Markdown) dans une page de contenu ; --validated retire la mention « en attente de validation ». */
+Artisan::command('mk:import-content {slug} {file} {--title= : titre de la page} {--validated : texte validé (juriste / direction)}', function () {
+    $file = $this->argument('file');
+    if (! is_readable($file)) {
+        $this->error("Fichier introuvable : {$file}");
+
+        return 1;
+    }
+    $body = trim(preg_replace('/^\xEF\xBB\xBF/', '', file_get_contents($file)));
+    $page = ContentPage::query()->firstOrNew(['slug' => $this->argument('slug')]);
+    $before = $page->exists ? ['requires_validation' => $page->requires_validation, 'length' => mb_strlen($page->body)] : null;
+    $page->fill([
+        'title' => $this->option('title') ?: ($page->title ?? $this->argument('slug')),
+        'body' => $body,
+        'status' => $page->status ?? 'draft',
+        'requires_validation' => ! $this->option('validated'),
+    ]);
+    $page->save();
+    app(AuditLogger::class)->log('content.imported', $page, $before, ['requires_validation' => $page->requires_validation, 'length' => mb_strlen($body)]);
+    $this->info("Page « {$page->slug} » mise à jour (".($page->requires_validation ? 'toujours marquée à valider' : 'validée').", statut : {$page->status}).");
+
+    return 0;
+})->purpose('Charger un texte validé dans une page du site');

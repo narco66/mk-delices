@@ -1,0 +1,3 @@
+﻿categorie;produit;slug;accroche;description;ingredients;allergenes;conservation;duree_conservation_heures;chaine_du_froid;signature;mis_en_avant;nouveaute;format;sku;parts;prix_fcfa;delai_preparation_minutes;quantite_max_par_commande
+Tiramisus;Exemple : Tiramisu classique;tiramisu-classique;Exemple : café et cacao;Description en 2-3 phrases;Liste complète des ingrédients;lait, œufs, gluten;Consignes de conservation;48;oui;oui;oui;non;Coupe individuelle;TIR-CLA-IND;1;2500;240;20
+Tiramisus;Exemple : Tiramisu classique;tiramisu-classique;;;;;;;;;;;Format 4 parts;TIR-CLA-4P;4;9000;1440;5

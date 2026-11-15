@@ -87,7 +87,11 @@ Artisan::command('mk:import-catalogue {file} {--publish : publier immédiatement
     $this->table(['Produits créés', 'Produits mis à jour', 'Formats créés', 'Formats mis à jour'], [[
         $report['products_created'], $report['products_updated'], $report['variants_created'], $report['variants_updated'],
     ]]);
-    $this->info($report['dry_run'] ? 'Simulation : rien n\'a été enregistré.' : 'Import enregistré. Les nouveaux produits sont en brouillon : vérifiez-les puis publiez-les dans le back-office.');
+    $this->info(match (true) {
+        $report['dry_run'] => 'Simulation : rien n\'a été enregistré.',
+        (bool) $this->option('publish') => 'Import enregistré : les produits sont publiés et commandables.',
+        default => 'Import enregistré. Les nouveaux produits sont en brouillon : vérifiez-les puis publiez-les dans le back-office.',
+    });
 
     return 0;
 })->purpose('Importer le catalogue depuis un fichier CSV');

@@ -8,6 +8,29 @@ Tant qu'une décision n'est pas validée, l'application fonctionne avec un **par
 
 Légende statut : 🔴 bloquant pour la mise en production · 🟠 nécessaire avant ouverture au public · 🟢 amélioration.
 
+## 0. Décisions validées par la direction le 15/11/2026
+
+La direction de MK Délices a validé les propositions de `docs/propositions/`. Elles sont chargées dans l'application (catalogue publié, zones, horaires, règles) et rejouables sur tout environnement :
+`php artisan mk:import-catalogue docs/propositions/catalogue-propose.csv --publish` puis `php artisan db:seed --class=LaunchConfigurationSeeder`.
+
+| ID | Décision validée | Reste à faire |
+|---|---|---|
+| D-CAT-01 | Gamme de lancement de 8 produits (01-CATALOGUE-ET-PRIX) | Photos (D-BRAND-02) |
+| D-CAT-02 / D-CAT-03 | Ingrédients, allergènes, conservation 48 h, œufs pasteurisés, sans alcool | **Revérifier les allergènes sur les étiquettes des ingrédients achetés** |
+| Prix | Grille validée (coupe Classique 2 500 FCFA…) | Contrôler le coefficient sur le coût de revient réel |
+| D-ZONE-01 / D-ZONE-02 | 4 zones pilotes, frais 1 500 → 3 000 FCFA, minimums 5 000 → 10 000 FCFA | Confirmer la rémunération par devis livreurs |
+| D-HOR-01 / D-HOR-02 | Mardi → dimanche 10 h–20 h, créneaux de 2 h, 5 commandes/créneau, délai 4 h (coupes) / 24 h (sur commande) | Saisir les jours fériés (Tabaski, Korité…) |
+| D-QUA-01 | Durée maximale hors froid : 30 min | — |
+| D-RET-01 | Pas de retrait sur place | — |
+| D-PAY-01 | Wave Business en direct au lancement | **Contrat, accès sandbox puis tests** |
+| D-PAY-04 / D-PAY-05 | Paiement à la livraison désactivé ; paiement exigé avant acceptation | — |
+| D-LIV-02 | Preuve : confirmation du destinataire ou code | — |
+| D-LIV-01 | Courses livrées rémunérées ; **50 % pour un échec dû au client** (client absent, injoignable, refus) — validé et **implémenté** | Pourcentage et motifs modifiables dans Paramètres ; « adresse introuvable » exclue par défaut (faute non attribuable) |
+| Promotion | Code BIENVENUE10 (10 %, plafond 2 000 FCFA) | Créé **inactif** : à activer, avec dates, le jour de l'ouverture |
+| D-JUR-01 / 02 / 03 | Projets de mentions légales, CGV et politique de confidentialité approuvés sur le fond | **Compléter les `[À COMPLÉTER]`, relecture par un juriste, déclaration CDP** ; les pages restent affichées « en attente de validation » |
+
+Les autres lignes du tableau ci-dessous restent ouvertes.
+
 ---
 
 ## 1. Décisions métier, juridiques et financières

@@ -13,6 +13,7 @@ use App\Models\DeliveryAssignment;
 use App\Models\DeliveryPartner;
 use App\Models\Order;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 
@@ -134,14 +135,20 @@ class DeliveryService
         });
     }
 
-    /** Règlement des montants dus aux livreurs (missions livrées). */
+    /** Courses donnant lieu à rémunération : livrées, ou échouées avec une part due (échec imputable au client). */
+    public static function payable(Builder $query): Builder
+    {
+        return $query->whereIn('status', [AssignmentStatus::Delivered->value, AssignmentStatus::Failed->value])
+            ->where('partner_fee_xof', '>', 0);
+    }
+
+    /** Règlement des montants dus aux livreurs. */
     public function settle(array $assignmentIds, User $actor): int
     {
         if (! $actor->can('deliveries.settle')) {
             throw DomainException::forbidden();
         }
-        $count = DeliveryAssignment::query()->whereIn('id', $assignmentIds)
-            ->where('status', AssignmentStatus::Delivered->value)->whereNull('settled_at')
+        $count = self::payable(DeliveryAssignment::query()->whereIn('id', $assignmentIds))->whereNull('settled_at')
             ->update(['settled_at' => now(), 'settled_by' => $actor->id]);
         $this->audit->log('delivery.settled', null, null, ['assignment_ids' => $assignmentIds, 'count' => $count]);
 
@@ -203,6 +210,10 @@ class DeliveryService
         if (! in_array($data['incident_reason'] ?? null, $reasons, true)) {
             throw DomainException::unprocessable('incident_reason_required', 'Choisissez le motif de l\'échec.', ['reasons' => $reasons]);
         }
+        // Course échouée : rémunérée à X % si l'échec est dû au client (règle validée le 15/11/2026), sinon non due.
+        $clientFault = in_array($data['incident_reason'], (array) $this->settings->get('delivery.client_fault_reasons', []), true);
+        $percent = $clientFault ? max(0, min(100, (int) $this->settings->get('delivery.failed_fee_percent', 0))) : 0;
+        $fee = intdiv($mission->partner_fee_xof * $percent, 100);
         $mission->update([
             'status' => AssignmentStatus::Failed,
             'failed_at' => now(),
@@ -211,10 +222,12 @@ class DeliveryService
             'incident_note' => $data['incident_note'] ?? null,
             'product_condition' => $data['product_condition'] ?? null,
             'contact_attempted' => (bool) ($data['contact_attempted'] ?? false),
+            'partner_fee_xof' => $fee,
         ]);
         $this->orders->system($order, OrderStatus::DeliveryFailed, $courier, $data['incident_note'] ?? $data['incident_reason'], [
             'event' => 'delivery.failed', 'assignment_id' => $mission->id, 'incident_reason' => $data['incident_reason'],
             'product_condition' => $data['product_condition'] ?? null, 'contact_attempted' => (bool) ($data['contact_attempted'] ?? false),
+            'client_fault' => $clientFault, 'partner_fee_percent' => $percent, 'partner_fee_xof' => $fee,
         ]);
     }
 }

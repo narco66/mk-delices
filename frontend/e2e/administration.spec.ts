@@ -267,8 +267,10 @@ test('Scénario F : échec de livraison, décision du responsable, réaffectatio
 
   // Règlement : la mission livrée apparaît dans les montants dus et peut être marquée réglée.
   await manager.goto('/admin/livraisons/reglements')
-  const line = manager.getByLabel(`Sélectionner ${reference}`)
-  await line.check()
-  await manager.getByRole('button', { name: /^Marquer 1 réglée/ }).click()
-  await expect(manager.getByLabel(`Sélectionner ${reference}`)).toHaveCount(0)
+  // Deux courses dues pour cette commande : l'échec (client absent → 50 %) puis la livraison.
+  await expect(manager.getByLabel(`Sélectionner ${reference} (course échouée)`)).toBeVisible()
+  await manager.getByLabel(`Sélectionner ${reference} (course échouée)`).check()
+  await manager.getByLabel(`Sélectionner ${reference} (livrée)`).check()
+  await manager.getByRole('button', { name: /^Marquer 2 réglée/ }).click()
+  await expect(manager.getByLabel(new RegExp(`^Sélectionner ${reference}`))).toHaveCount(0)
 })

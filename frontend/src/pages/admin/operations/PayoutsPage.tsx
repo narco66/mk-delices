@@ -109,11 +109,16 @@ export function PayoutsPage() {
                 {data.unsettled.map((a) => (
                   <tr key={a.id} className="border-b border-cocoa-100/60 last:border-0">
                     <td className="px-4 py-3">
-                      <input type="checkbox" className="size-5 accent-cocoa-700" aria-label={`Sélectionner ${a.order_reference}`} checked={selected.includes(a.id)} onChange={() => toggle(a.id)} />
+                      <input type="checkbox" className="size-5 accent-cocoa-700" aria-label={`Sélectionner ${a.order_reference} (${a.status === 'failed' ? 'course échouée' : 'livrée'})`} checked={selected.includes(a.id)} onChange={() => toggle(a.id)} />
                     </td>
-                    <td className="px-4 py-3 font-semibold">{a.order_reference}</td>
+                    <td className="px-4 py-3 font-semibold">
+                      {a.order_reference}
+                      {a.status === 'failed' && (
+                        <span className="ml-2 rounded-full bg-warning-50 px-2 py-0.5 text-xs font-medium text-warning-600">Échec dû au client · part due</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3">{a.partner?.name}</td>
-                    <td className="px-4 py-3 text-xs">{formatDateTime(a.delivered_at)}</td>
+                    <td className="px-4 py-3 text-xs">{formatDateTime(a.delivered_at ?? a.failed_at)}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{a.cash_collected_xof ? formatXof(a.cash_collected_xof) : '—'}</td>
                     <td className="px-4 py-3 text-right font-semibold tabular-nums">{formatXof(a.partner_fee_xof)}</td>
                   </tr>

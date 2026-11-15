@@ -64,6 +64,9 @@ Mot de passe commun : `Demo-MKD-2026`
 | preparateur@mk-delices.test | Préparateur |
 | livraison@mk-delices.test | Responsable des livraisons |
 | livreur1@mk-delices.test, livreur2@mk-delices.test | Livreurs partenaires |
+| client1@mk-delices.test, client2@…, client3@… | Clients avec compte |
+
+Données de démonstration (≈ 80 commandes sur 30 jours dans tous les états, paiements, remboursements, livraisons, incidents, avis) et parcours de découverte : **`docs/ACCES-DEMONSTRATION.md`**.
 
 Le seeder de démonstration refuse de s'exécuter hors `local`/`testing`. En production : `php artisan mk:create-admin`.
 
@@ -90,6 +93,10 @@ Résultats détaillés : `docs/DEV-TESTS.md`.
 | `php artisan mk:reconcile-payments` | Rapprocher les paiements en attente (planifié toutes les 5 min) |
 | `php artisan mk:purge-expired` | Purger paniers expirés et clés d'idempotence (planifié quotidiennement) |
 | `php artisan schedule:work` | Exécuter le planificateur en local |
+| `php artisan mk:import-catalogue <csv> [--publish] [--dry-run]` | Importer le catalogue (brouillons par défaut) |
+| `php artisan mk:import-content <slug> <fichier> [--validated]` | Charger un texte validé dans une page du site |
+| `php artisan db:seed --class=LaunchConfigurationSeeder` | Appliquer la configuration de lancement validée (zones, horaires, règles) |
+| `php artisan db:seed --class=DemoActivitySeeder` | Générer l'activité de démonstration (local/testing uniquement) |
 | `php artisan mk:flag-test-orders` | Marquer `is_test` les commandes créées par les tests E2E (hors production) |
 
 ## Déploiement

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Domain\Shared\Settings;
 use App\Models\DeliveryAssignment;
 use App\Models\User;
 use Tests\TestCase;
@@ -136,5 +137,53 @@ class DeliveryTest extends TestCase
         $this->actingAs($partner->user)->postJson("/api/v1/courier/missions/{$missionId}/actions", ['action' => 'refuse', 'reason' => 'Panne de moto'])->assertOk();
         $this->assertSame('ready', $order->fresh()->status->value);
         $this->actingAs($manager)->postJson('/api/v1/admin/delivery/assignments', ['order_id' => $order->id, 'partner_id' => $this->partner($zone)->id])->assertCreated();
+    }
+
+    public function test_failed_course_is_paid_50_percent_only_when_the_client_is_at_fault(): void
+    {
+        $zone = $this->zone(['partner_fee_xof' => 1300]);
+        $partner = $this->partner($zone);
+        $manager = $this->staff(User::ROLE_RESP_LIVRAISON);
+        $failWith = function (string $reason) use ($zone, $partner, $manager): DeliveryAssignment {
+            $order = $this->readyOrder($zone);
+            $id = $this->actingAs($manager)->postJson('/api/v1/admin/delivery/assignments', ['order_id' => $order->id, 'partner_id' => $partner->id])->json('data.id');
+            $this->actingAs($partner->user)->postJson("/api/v1/courier/missions/{$id}/actions", ['action' => 'accept'])->assertOk();
+            $this->postJson("/api/v1/courier/missions/{$id}/actions", ['action' => 'pick_up', 'packaging_checked' => true])->assertOk();
+            $this->postJson("/api/v1/courier/missions/{$id}/actions", ['action' => 'fail', 'incident_reason' => $reason])->assertOk();
+
+            return DeliveryAssignment::query()->findOrFail($id);
+        };
+
+        $clientFault = $failWith('client_absent');
+        $notClientFault = $failWith('produit_endommage');
+        $this->assertSame(650, $clientFault->partner_fee_xof, '50 % de 1 300 FCFA');
+        $this->assertSame(0, $notClientFault->partner_fee_xof);
+        $this->assertDatabaseHas('order_events', ['order_id' => $clientFault->order_id, 'to_status' => 'delivery_failed']);
+
+        // Montants dus : côté responsable et côté livreur.
+        $this->actingAs($manager)->getJson('/api/v1/admin/delivery/payouts')->assertOk()
+            ->assertJsonPath('data.partners.0.amount_due_xof', 650)
+            ->assertJsonPath('data.partners.0.unsettled_missions', 1)
+            ->assertJsonCount(1, 'data.unsettled');
+        $this->actingAs($partner->user)->getJson('/api/v1/courier/missions')->assertJsonPath('data.amount_due_xof', 650);
+
+        // Règlement : seule la course due est réglée.
+        $this->actingAs($manager)->postJson('/api/v1/admin/delivery/payouts/settle', ['assignment_ids' => [$clientFault->id, $notClientFault->id]])
+            ->assertOk()->assertJsonPath('data.settled', 1);
+        $this->assertNotNull($clientFault->fresh()->settled_at);
+        $this->assertNull($notClientFault->fresh()->settled_at);
+    }
+
+    public function test_failed_course_percentage_is_configurable(): void
+    {
+        app(Settings::class)->set('delivery.failed_fee_percent', 0);
+        $zone = $this->zone(['partner_fee_xof' => 1000]);
+        $partner = $this->partner($zone);
+        $order = $this->readyOrder($zone);
+        $id = $this->actingAs($this->staff(User::ROLE_RESP_LIVRAISON))->postJson('/api/v1/admin/delivery/assignments', ['order_id' => $order->id, 'partner_id' => $partner->id])->json('data.id');
+        $this->actingAs($partner->user)->postJson("/api/v1/courier/missions/{$id}/actions", ['action' => 'accept']);
+        $this->postJson("/api/v1/courier/missions/{$id}/actions", ['action' => 'pick_up', 'packaging_checked' => true]);
+        $this->postJson("/api/v1/courier/missions/{$id}/actions", ['action' => 'fail', 'incident_reason' => 'refus_client'])->assertOk();
+        $this->assertSame(0, DeliveryAssignment::query()->findOrFail($id)->partner_fee_xof);
     }
 }

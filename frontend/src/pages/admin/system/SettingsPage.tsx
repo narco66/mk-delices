@@ -48,8 +48,9 @@ const INTEGER_KEYS = [
   'ordering.tracking_token_ttl_days',
   'ordering.max_qty_per_line',
   'quality.cold_chain_max_minutes',
+  'delivery.failed_fee_percent',
 ]
-const LIST_KEYS = ['ordering.closed_dates', 'delivery.proof_types', 'delivery.incident_reasons']
+const LIST_KEYS = ['ordering.closed_dates', 'delivery.proof_types', 'delivery.incident_reasons', 'delivery.client_fault_reasons']
 const LONG_TEXT_KEYS = ['policies.cancellation']
 
 export function SettingsPage() {

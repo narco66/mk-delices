@@ -44,5 +44,17 @@
 - **Qualité du code :** ESLint 0 avertissement (`useWatch`, modules de libellés dédiés).
 - **Résultats :** PHPUnit 74/74, Vitest 9/9, Playwright 47/47.
 
+## 15/11/2026 — Validation des propositions par la direction
+- **Décision :** la direction valide les propositions (catalogue, prix, zones, horaires, paiement Wave, règles de livraison, projets juridiques sur le fond).
+- **Chargement (base de développement, après sauvegarde `pg_dump`) :** catalogue de 8 produits publié (`mk:import-catalogue --publish`), `LaunchConfigurationSeeder` (4 zones, horaires mardi→dimanche 10 h–20 h, règles opérationnelles, code BIENVENUE10 inactif, données de démonstration retirées de la vente sans suppression), textes juridiques chargés en restant marqués « en attente de validation ».
+- **Tests :** `LaunchConfigurationTest` (configuration, idempotence, catalogue visible = catalogue validé).
+- **Reste :** contrat Wave, photos, vérification des allergènes sur étiquettes, devis livreurs, juriste et CDP, évolution « 50 % de la course échouée ».
+
+## 15/11/2026 — Règle « course échouée à 50 % » et données de démonstration
+- **Règle validée et implémentée :** course échouée rémunérée à 50 % si le motif est imputable au client (paramètres `delivery.failed_fee_percent`, `delivery.client_fault_reasons`) ; montants dus, règlements, espace livreur et écran « Règlements » mis à jour ; tests PHPUnit dédiés.
+- **Données de démonstration :** `DemoActivitySeeder` (vrais services, voyage dans le temps contrôlé, graine fixe, local/testing uniquement) — ≈ 80 commandes sur 30 jours, tous les états, paiements, remboursements, missions, incidents, avis, règlements ; 3 comptes clients. Test `DemoActivityTest` (invariants métier, idempotence).
+- **Anomalies corrigées pendant la génération :** dérive des dates due au voyage dans le temps, chargement paresseux en mode strict, dépassement du maximum par commande ; une première génération interrompue a été exclue (`is_test`) sans suppression.
+- **Accès :** `docs/ACCES-DEMONSTRATION.md`.
+
 ## Travaux restants (voir rapport final §15)
 Décisions métier/juridiques, contrats PSP, hébergement, sauvegardes, tests de charge, test avec lecteur d'écran, exécution réelle du déploiement et du test de restauration une fois l'hébergeur choisi.

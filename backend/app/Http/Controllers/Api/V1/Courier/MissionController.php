@@ -27,7 +27,7 @@ class MissionController extends Controller
             'history' => MissionResource::collection((clone $base)->whereNotIn('status', AssignmentStatus::active())->latest('assigned_at')->limit(50)->get())->resolve(),
             'proof_types' => $settings->get('delivery.proof_types'),
             'incident_reasons' => $settings->get('delivery.incident_reasons'),
-            'amount_due_xof' => (int) (clone $base)->where('status', 'delivered')->whereNull('settled_at')->sum('partner_fee_xof'),
+            'amount_due_xof' => (int) DeliveryService::payable(clone $base)->whereNull('settled_at')->sum('partner_fee_xof'),
         ]]);
     }
 

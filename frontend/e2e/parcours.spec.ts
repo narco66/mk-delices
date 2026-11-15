@@ -6,7 +6,7 @@ test('Accueil : tiramisus mis en avant, aucun débordement à 360 px', async ({ 
   await page.goto('/')
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Nos tiramisus' })).toBeVisible()
-  await expect(page.getByRole('link', { name: /Tiramisu classique — voir la fiche/ }).first()).toBeVisible()
+  await expect(page.getByRole('link', { name: /Tiramisu classique — voir la fiche/i }).first()).toBeVisible()
   await noHorizontalOverflow(page)
 })
 
@@ -18,7 +18,7 @@ test('Scénario A + B : commande invitée, paiement confirmé par webhook signé
   await expect(page.getByText('Gluten').first()).toBeVisible()
   await noHorizontalOverflow(page)
 
-  await page.getByText('Format 4 personnes').click()
+  await page.getByText('Format 4 parts').click()
   await page.getByRole('button', { name: 'Augmenter la quantité' }).click()
   await page.getByRole('button', { name: /^Ajouter/ }).click()
   await expect(page.getByText(/ajouté au panier/)).toBeVisible()

@@ -63,6 +63,8 @@ return [
         'policies.cancellation' => ['policies', null, true, true, 'Politique d\'annulation et de remboursement (à rédiger et valider)'],
         'delivery.proof_types' => ['delivery', ['recipient_confirmation', 'photo_reference', 'code'], false, true, 'Types de preuve de remise acceptés'],
         'delivery.incident_reasons' => ['delivery', ['client_absent', 'adresse_introuvable', 'client_injoignable', 'refus_client', 'produit_endommage', 'autre'], false, false, 'Motifs d\'échec de livraison'],
+        'delivery.failed_fee_percent' => ['delivery', 50, false, true, 'Part de la rémunération due au livreur pour une course échouée par la faute du client (%)'],
+        'delivery.client_fault_reasons' => ['delivery', ['client_absent', 'client_injoignable', 'refus_client'], false, true, 'Motifs d\x27échec considérés comme dus au client (course rémunérée au pourcentage ci-dessus)'],
         'quality.cold_chain_max_minutes' => ['quality', null, false, true, 'Durée maximale hors froid (seuil sanitaire à valider par MK Délices)'],
     ],
 ];

@@ -238,7 +238,8 @@ class BackOfficeController extends Controller
             'ordering.pickup_enabled', 'payments.require_payment_before_acceptance' => ['required', 'boolean'],
             'payments.methods' => ['required', 'array:wave,orange_money,card,cash_on_delivery'],
             'business.hours' => ['required', 'array:mon,tue,wed,thu,fri,sat,sun'],
-            'ordering.closed_dates', 'delivery.proof_types', 'delivery.incident_reasons' => ['present', 'array'],
+            'ordering.closed_dates', 'delivery.proof_types', 'delivery.incident_reasons', 'delivery.client_fault_reasons' => ['present', 'array'],
+            'delivery.failed_fee_percent' => ['required', 'integer', 'min:0', 'max:100'],
             default => ['nullable', 'string', 'max:5000'],
         };
         validator(['value' => $value], ['value' => $rules])->validate();

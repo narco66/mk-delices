@@ -47,7 +47,7 @@ test('Accessibilité — back-office (tableau de bord et commandes)', async ({ p
 /** T-022 : un utilisateur au clavier seul peut compléter le checkout (focus, libellés, erreurs). */
 test('Clavier seul : compléter la commande', async ({ page }) => {
   await page.goto('/produits/tiramisu-classique')
-  await page.getByText('Format 4 personnes').click()
+  await page.getByText('Format 4 parts').click()
   await page.getByRole('button', { name: /^Ajouter/ }).click()
   await expect(page.getByText(/ajouté au panier/)).toBeVisible()
   await page.goto('/commander')

@@ -77,7 +77,7 @@ export function CartDrawer() {
                   <Price amount={line.line_total_xof} />
                 </div>
               </div>
-              <button type="button" onClick={() => safe(() => remove(line.item_id))} className="grid size-10 shrink-0 place-items-center rounded-full text-cocoa-300 hover:bg-error-50 hover:text-error-600" aria-label={`Retirer ${line.product_name}`}>
+              <button type="button" onClick={() => safe(() => remove(line.item_id))} className="grid size-10 shrink-0 place-items-center rounded-full text-cocoa-400 hover:bg-error-50 hover:text-error-600" aria-label={`Retirer ${line.product_name}`}>
                 <Trash2 className="size-4" />
               </button>
             </li>

@@ -9,7 +9,7 @@ export function Price({ amount, compareAt, className }: { amount: number | null 
     <span className={cn('inline-flex items-baseline gap-2', className)}>
       <span className="font-semibold tabular-nums">{formatXof(amount)}</span>
       {compareAt && amount !== null && amount !== undefined && compareAt > amount && (
-        <s className="text-sm text-cocoa-300 tabular-nums">{formatXof(compareAt)}</s>
+        <s className="text-sm text-cocoa-400 tabular-nums">{formatXof(compareAt)}</s>
       )}
     </span>
   )

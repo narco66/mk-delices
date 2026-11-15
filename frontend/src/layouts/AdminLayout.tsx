@@ -111,7 +111,7 @@ export function AdminLayout() {
       <div className="flex-1 space-y-6 overflow-y-auto px-3 pb-6">
         {sections.map((section) => (
           <div key={section.title}>
-            <p className="mb-1.5 px-3 text-[11px] font-semibold tracking-[0.16em] text-cocoa-300 uppercase">{section.title}</p>
+            <p className="mb-1.5 px-3 text-[11px] font-semibold tracking-[0.16em] text-cocoa-400 uppercase">{section.title}</p>
             <ul className="space-y-0.5">
               {section.items.map((item) => (
                 <li key={item.to}>

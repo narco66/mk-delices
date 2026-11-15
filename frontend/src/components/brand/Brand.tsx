@@ -5,7 +5,8 @@ import type { Product } from '@/types/api'
 /** Logo provisoire (monogramme + logotype) — à remplacer par l'identité officielle (D-BRAND-01). */
 export function Logo({ className, tone = 'dark' }: { className?: string; tone?: 'dark' | 'light' }) {
   return (
-    <Link to="/" className={cn('group inline-flex items-center gap-2.5', className)} aria-label="MK Délices — accueil">
+    // Nom accessible = texte visible (« MK Délices Pâtisserie · Dakar ») + précision « accueil » (WCAG 2.5.3).
+    <Link to="/" className={cn('group inline-flex items-center gap-2.5', className)}>
       <span className={cn('grid size-10 place-items-center rounded-xl shadow-soft transition group-hover:rotate-[-4deg]', tone === 'dark' ? 'bg-cocoa-700' : 'bg-cream-50')}>
         <svg viewBox="0 0 64 64" className="size-7" aria-hidden>
           <path d="M14 44V22l9 13 9-13v22" fill="none" stroke={tone === 'dark' ? '#FFF9F2' : '#5B342B'} strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -15,6 +16,7 @@ export function Logo({ className, tone = 'dark' }: { className?: string; tone?: 
       <span className="leading-none">
         <span className={cn('block font-display text-xl font-semibold tracking-tight', tone === 'dark' ? 'text-cocoa-900' : 'text-cream-50')}>MK Délices</span>
         <span className={cn('block text-[10px] font-semibold tracking-[0.22em] uppercase', tone === 'dark' ? 'text-caramel-600' : 'text-caramel-300')}>Pâtisserie · Dakar</span>
+        <span className="sr-only"> — accueil</span>
       </span>
     </Link>
   )

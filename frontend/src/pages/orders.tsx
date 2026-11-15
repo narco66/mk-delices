@@ -379,7 +379,7 @@ export function TrackingPage() {
                   {i < order.timeline.length - 1 && <span className={cn('absolute top-7 left-[13px] h-[calc(100%-4px)] w-0.5', step.done ? 'bg-success-600' : 'bg-cocoa-100')} aria-hidden />}
                   {step.done ? <CheckCircle2 className="relative size-7 shrink-0 text-success-600" aria-hidden /> : <Circle className="relative size-7 shrink-0 text-cocoa-100" aria-hidden />}
                   <div className="pt-0.5">
-                    <p className={cn('font-medium', !step.done && 'text-cocoa-300')}>{step.label}</p>
+                    <p className={cn('font-medium', !step.done && 'text-cocoa-400')}>{step.label}</p>
                     {current && <p className="text-sm text-raspberry-600">Étape en cours</p>}
                     <span className="sr-only">{step.done ? 'terminée' : 'à venir'}</span>
                   </div>

@@ -109,7 +109,7 @@ export function ShopPage() {
         <div className="flex flex-col gap-3 sm:flex-row">
           <label className="relative flex-1">
             <span className="sr-only">Rechercher un produit</span>
-            <Search className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-cocoa-300" aria-hidden />
+            <Search className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-cocoa-400" aria-hidden />
             <Input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Rechercher un tiramisu, un gâteau…" className="pl-10" />
           </label>
           <div className="flex gap-2">

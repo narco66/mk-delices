@@ -1,18 +1,6 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test } from '@playwright/test'
+import { E2E_FIRST_NAME, login, noHorizontalOverflow } from './helpers'
 
-const DEMO_PASSWORD = 'Demo-MKD-2026'
-
-async function noHorizontalOverflow(page: Page) {
-  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
-  expect(overflow, 'Aucun débordement horizontal (NFR-001)').toBeLessThanOrEqual(1)
-}
-
-async function login(page: Page, email: string) {
-  await page.goto('/connexion')
-  await page.getByLabel('Email').fill(email)
-  await page.getByLabel('Mot de passe').fill(DEMO_PASSWORD)
-  await page.getByRole('button', { name: 'Se connecter' }).click()
-}
 
 test('Accueil : tiramisus mis en avant, aucun débordement à 360 px', async ({ page }) => {
   await page.goto('/')
@@ -36,7 +24,7 @@ test('Scénario A + B : commande invitée, paiement confirmé par webhook signé
   await expect(page.getByText(/ajouté au panier/)).toBeVisible()
 
   await page.goto('/commander')
-  await page.getByLabel('Prénom').fill('Awa')
+  await page.getByLabel('Prénom').fill(E2E_FIRST_NAME)
   await page.getByLabel('Téléphone').fill('77 123 45 67')
   await page.getByLabel('Zone de livraison').selectOption({ index: 1 })
   await page.getByLabel('Quartier').fill('Quartier de test E2E')

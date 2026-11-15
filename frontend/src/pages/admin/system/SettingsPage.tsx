@@ -114,7 +114,7 @@ export function SettingsPage() {
                       {s.is_public && <Badge>Public</Badge>}
                       {dirty.has(s.key) && <Badge tone="raspberry">Modifié</Badge>}
                     </div>
-                    <p className="mb-2 font-mono text-[11px] text-cocoa-300">{s.key}</p>
+                    <p className="mb-2 font-mono text-[11px] text-cocoa-400">{s.key}</p>
                     <SettingEditor setting={s} value={values[s.key]} onChange={(v) => set(s.key, v)} />
                   </div>
                 ))}

@@ -11,14 +11,15 @@
   --color-cream-300: #f0dcc3;
   --color-cocoa-50: #f6efec;
   --color-cocoa-100: #e8d8d2;
-  --color-cocoa-300: #b08b80;
+  --color-cocoa-300: #b08b80; /* bordures et décor uniquement (contraste insuffisant pour du texte) */
+  --color-cocoa-400: #765d56; /* texte secondaire : 5,8:1 sur crème (WCAG AA) */
   --color-cocoa-500: #7a4d40;
   --color-cocoa-700: #5b342b; /* color.primary */
   --color-cocoa-800: #46271f;
   --color-cocoa-900: #2a211f; /* color.text */
   --color-caramel-300: #e4bf8f;
   --color-caramel-500: #c08a4d;
-  --color-caramel-600: #a8733a;
+  --color-caramel-600: #855b2e; /* assombri pour 4,6:1 minimum (WCAG AA) */
   --color-raspberry-50: #fcf0f3;
   --color-raspberry-100: #f6dbe2;
   --color-raspberry-500: #b74264; /* color.accent */

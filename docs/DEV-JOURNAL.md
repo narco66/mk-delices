@@ -27,5 +27,13 @@
 - **Résultats finaux :** PHPUnit **71/71 (629 assertions)**, Vitest 9/9, E2E 10/10, `tsc` et ESLint sans erreur, build OK, audits sans vulnérabilité.
 - **Données de développement :** les commandes créées par les tests manuels/E2E ont été marquées `is_test = true`.
 
+## 15/11/2026 — Phase 7 (suite) : back-office, accessibilité, images
+- **Dépôt Git** initialisé (`main`, commit `37ff8d2`) et publié sur `github.com/narco66/mk-delices`.
+- **Images (SEC-004) :** 3 tests (ré-encodage WebP vérifié par signature binaire, script déguisé refusé, dimensions, droits, suppression).
+- **E2E back-office :** scénarios D+E dans le navigateur avec 5 sessions distinctes (client, commercial, préparateur, responsable, livreur 360 px). Commande `mk:flag-test-orders` + `global-teardown` pour marquer automatiquement les commandes de test.
+- **Accessibilité :** audit axe-core WCAG 2.2 AA sur 10 écrans → corrections des contrastes (`caramel-600`, nouveau jeton `cocoa-400`) et du nom accessible du logo ; commande au clavier seul (T-022).
+- **UX :** bouton « Confirmer » désactivé quand un blocage est affiché (minimum de commande, zone…), avec explication reliée.
+- **Résultats :** PHPUnit 74/74 (658 assertions), Vitest 9/9, Playwright 32/32, axe 0 violation serious/critical.
+
 ## Travaux restants (voir rapport final §15)
-Décisions métier/juridiques, contrats PSP, hébergement, sauvegardes, tests de charge, audit d'accessibilité outillé, parcours E2E du back-office, initialisation Git.
+Décisions métier/juridiques, contrats PSP, hébergement, sauvegardes, tests de charge, test avec lecteur d'écran, parcours E2E des écrans d'administration restants (catalogue, contenus, paramètres, utilisateurs, finances).

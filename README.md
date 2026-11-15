@@ -73,11 +73,11 @@ Avec `PAYMENTS_SIMULATOR_ENABLED=true` (local uniquement), le moyen « Paiement 
 ## Tests
 
 ```bash
-cd backend  && php artisan test            # 71 tests, PostgreSQL mk_delices_test
+cd backend  && php artisan test            # 74 tests, PostgreSQL mk_delices_test
 cd backend  && vendor/bin/pint --test      # style PSR-12
 cd frontend && npm test                    # Vitest
 cd frontend && npm run typecheck && npm run lint && npm run build
-cd frontend && E2E_CHANNEL=msedge npx playwright test   # serveurs démarrés ; idéalement sur une base dédiée
+cd frontend && E2E_CHANNEL=msedge npx playwright test   # serveurs démarrés ; commandes de test marquées automatiquement
 ```
 Résultats détaillés : `docs/DEV-TESTS.md`.
 
@@ -89,6 +89,7 @@ Résultats détaillés : `docs/DEV-TESTS.md`.
 | `php artisan mk:reconcile-payments` | Rapprocher les paiements en attente (planifié toutes les 5 min) |
 | `php artisan mk:purge-expired` | Purger paniers expirés et clés d'idempotence (planifié quotidiennement) |
 | `php artisan schedule:work` | Exécuter le planificateur en local |
+| `php artisan mk:flag-test-orders` | Marquer `is_test` les commandes créées par les tests E2E (hors production) |
 
 ## Déploiement
 
@@ -99,5 +100,4 @@ Non exécuté. Topologie, variables et procédure : `docs/DEV-ARCHITECTURE.md` �
 - Wave : adaptateur écrit d'après la documentation publique, **jamais exécuté contre un compte réel** ; Orange Money et carte : non implémentés (contrats/spécifications requis).
 - Notifications client par email uniquement (`MAIL_MAILER=log` en dev) ; SMS / WhatsApp automatisés non branchés.
 - Points de fidélité, suivi GPS et commandes événementielles : hors MVP.
-- Pages du back-office vérifiées par compilation et tests d'API, mais pas toutes parcourues en E2E.
-- Le dépôt n'est pas encore sous Git.
+- Certains écrans d'administration (édition catalogue, contenus, paramètres, utilisateurs, finances) ne sont pas encore parcourus en E2E.

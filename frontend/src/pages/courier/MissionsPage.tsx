@@ -120,7 +120,7 @@ function MissionCard({ mission: m, highlight }: { mission: Mission; highlight: b
               <MapPin className="size-4" /> {[m.zone_name, m.district].filter(Boolean).join(' · ') || '—'}
             </p>
           </div>
-          <ChevronRight className="mt-1 size-5 text-cocoa-300" aria-hidden />
+          <ChevronRight className="mt-1 size-5 text-cocoa-400" aria-hidden />
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
           <StatusPill status={m.status} label={m.status === 'proposed' ? 'Nouvelle mission' : m.status_label} />

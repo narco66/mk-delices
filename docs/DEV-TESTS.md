@@ -1,6 +1,6 @@
 # Résultats des tests — MK Délices
 
-**Dernière exécution :** 15/11/2026 · Poste Windows 11 / Laragon · PHP 8.5.12 · PostgreSQL 18.4 (port 5433) · Node 22.23 · Edge (Playwright).
+**Dernière exécution :** 15/11/2026 (2e campagne : back-office, accessibilité, images) · Poste Windows 11 / Laragon · PHP 8.5.12 · PostgreSQL 18.4 (port 5433) · Node 22.23 · Edge (Playwright).
 
 Seuls des tests **réellement exécutés** figurent ici. Commandes de reproduction en fin de document.
 
@@ -8,13 +8,14 @@ Seuls des tests **réellement exécutés** figurent ici. Commandes de reproducti
 
 | Suite | Outil | Base / cible | Résultat |
 |---|---|---|---|
-| Backend — fonctionnels + unitaires | PHPUnit 12 | PostgreSQL `mk_delices_test` | **71 tests, 629 assertions, 0 échec** (35 s) |
+| Backend — fonctionnels + unitaires | PHPUnit 12 | PostgreSQL `mk_delices_test` | **74 tests, 658 assertions, 0 échec** |
 | Style PHP | Laravel Pint (PSR-12) | `backend/` | conforme |
 | Frontend — unitaires | Vitest 5 + Testing Library | jsdom | **9 tests, 0 échec** |
 | Frontend — types / lint | `tsc -b`, ESLint | `frontend/src` | 0 erreur TS ; ESLint 0 erreur, 26 avertissements non bloquants (*fast refresh*, compatibilité react-hook-form/compilateur React) |
 | Build de production | Vite 8 | `frontend/dist` | OK (plus gros bloc : 333 kB / 103 kB gzip) |
-| Bout en bout | Playwright 1.65 (Edge) | Vite :5173 → Laravel :8000 → PostgreSQL `mk_delices` | **10 exécutions réussies** (5 parcours × mobile 360 px et desktop) |
-| Dépendances | `composer audit`, `npm audit` | — | 0 vulnérabilité connue |
+| Bout en bout | Playwright 1.65 (Edge) | Vite :5173 → Laravel :8000 → PostgreSQL `mk_delices` | **32 exécutions réussies** (16 tests × mobile 360 px et desktop) : parcours client, back-office D+E multi-acteurs, accessibilité |
+| Accessibilité | axe-core 4 (WCAG 2.0/2.1/2.2 A et AA) | 7 pages publiques, commande, tableau de bord, liste des commandes | **0 violation « serious » ou « critical »** après corrections ; parcours de commande au clavier seul réussi (T-022) |
+| Dépendances | `composer audit`, `npm audit --omit=dev` | — | 0 vulnérabilité en production ; 7 « moderate » dans l'outillage ESLint (déni de service `minimatch`, GHSA-g3hv-75wg-m249), sans impact en production — correctif amont attendu (le seul correctif proposé par npm rétrograde typescript-eslint) |
 
 ## 2. Détail backend (PHPUnit, PostgreSQL)
 
@@ -28,6 +29,7 @@ Seuls des tests **réellement exécutés** figurent ici. Commandes de reproducti
 | `SecurityTest` | 11 | SEC-009, matrice RBAC, T-019 (429), en-têtes, inscription publique, compte désactivé |
 | `ReportingTest` | 2 | STATS-010, T-024 |
 | `SeoTest` | 4 | NFR-009 (méta, JSON-LD, sitemap, robots) |
+| `ProductImageUploadTest` | 3 | SEC-004 : ré-encodage WebP vérifié par signature binaire, script déguisé refusé, dimensions, droits, suppression des fichiers |
 | `EndpointsSmokeTest` | 1 | 36 endpoints GET avec données multiples (aucun 500, pas de chargement paresseux) |
 | `Unit/DomainHelpersTest` | 10 | téléphone sénégalais, masquage, montants XOF, calcul de remise |
 
@@ -63,7 +65,7 @@ Seuls des tests **réellement exécutés** figurent ici. Commandes de reproducti
 ### Scénario E — Livraison
 - **Actions :** affectation → livreur consulte (adresse masquée) → accepte (adresse dévoilée) → livrer avant enlèvement (409) → enlèvement avec contrôle → remise avec preuve.
 - **Constaté :** conforme ; coordonnées à nouveau masquées après clôture ; montant dû au livreur calculé séparément.
-- **Preuve :** `DeliveryTest::test_scenario_e…`. **Statut :** ✅
+- **Preuve :** `DeliveryTest::test_scenario_e…` et E2E `back-office.spec.ts` (5 sessions distinctes : client, commercial, préparateur, responsable, livreur sur écran 360 px ; lien « Appeler » absent avant acceptation, `tel:+221…` ensuite ; le client voit « Livrée »). **Statut :** ✅
 
 ### Scénario F — Incident
 - **Actions :** échec déclaré (motif, note, état du produit, contact tenté) → responsable consulte le tableau → réaffectation.
@@ -94,14 +96,16 @@ Seuls des tests **réellement exécutés** figurent ici. Commandes de reproducti
 | A-08 | Écran d'erreur React (`useContext` null) en développement | Pré-bundle Vite régénéré en cours de session (deux copies de React) | `optimizeDeps.include` | ✅ |
 | A-09 | Vitest « failed to find the current suite » | Terminal ouvert sur `c:\` (minuscule) : Vitest chargé deux fois | Lanceur `scripts/vitest.mjs` | ✅ |
 | A-10 | Dépendances de développement absentes | `NODE_ENV=production` défini globalement sur le poste | `npm ci --include=dev` (documenté) | ✅ |
+| A-11 | Contrastes insuffisants (WCAG 1.4.3) : texte caramel 3,1–4,0:1, texte `cocoa-300` 2,9:1 | Teintes de la palette indicative | `caramel-600` assombri (#855B2E, ≥ 4,6:1), nouveau jeton texte `cocoa-400` (#765D56, 5,8:1) ; `cocoa-300` réservé au décor | ✅ (axe) |
+| A-12 | Nom accessible du logo différent du texte visible (WCAG 2.5.3) | `aria-label` « MK Délices — accueil » | Texte visible + « — accueil » masqué visuellement | ✅ (axe) |
+| A-13 | Bouton « Confirmer » actif malgré un blocage affiché (ex. minimum de commande de la zone) | UX : seul le serveur refusait | Bouton désactivé + message explicatif relié (`aria-describedby`) | ✅ (E2E) |
 
 ## 5. Couverture non automatisée / restant à faire
 
-- Téléversement d'images produit (contrôle MIME/ré-encodage) : implémenté, **non testé automatiquement**.
-- Pages back-office non parcourues en E2E : catalogue (édition), contenus, paramètres, utilisateurs, livraisons, préparation, espace livreur. Leurs API sont couvertes (PHPUnit) ; leurs écrans sont vérifiés par compilation TypeScript, ESLint et build, mais pas par un parcours navigateur.
-- Tests de charge (NFR-002), audit d'accessibilité outillé (axe), restauration de sauvegarde (T-020) : non réalisés.
-- T-022 (parcours au clavier seul) : non automatisé.
-- Le test E2E crée des commandes dans la base de développement ; elles ont été marquées `is_test = true` (exclues des indicateurs). À l'avenir, lancer l'E2E sur une base dédiée.
+- Écrans back-office parcourus en E2E : tableau de bord, commandes (liste, détail, acceptation), préparation, livraisons (affectation), espace livreur. Non parcourus en navigateur : édition du catalogue, contenus, paramètres, utilisateurs, paiements/remboursements, règlements livreurs (API couvertes par PHPUnit, écrans vérifiés par TypeScript/ESLint/build).
+- Tests de charge (NFR-002) et restauration de sauvegarde (T-020) : non réalisés (dépendent de l'hébergement).
+- Accessibilité : l'audit automatique ne remplace pas un test avec lecteur d'écran (NVDA/TalkBack) par une personne, recommandé avant production.
+- Les tests E2E créent des commandes au prénom « E2E » dans la base de développement ; `global-teardown` les marque automatiquement `is_test = true` (`php artisan mk:flag-test-orders`).
 
 ## 6. Reproduire
 

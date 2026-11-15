@@ -4,6 +4,7 @@ use App\Domain\Payments\PaymentService;
 use App\Domain\Payments\PaymentStatus;
 use App\Models\Cart;
 use App\Models\IdempotencyKey;
+use App\Models\Order;
 use App\Models\Payment;
 use App\Models\User;
 use Illuminate\Support\Facades\Schedule;
@@ -53,3 +54,19 @@ Artisan::command('mk:purge-expired', function () {
 
 Schedule::command('mk:reconcile-payments')->everyFiveMinutes()->withoutOverlapping();
 Schedule::command('mk:purge-expired')->dailyAt('03:30')->timezone('Africa/Dakar');
+
+/** Marque comme commandes de test celles créées par les tests E2E (prénom « E2E »), hors production uniquement. */
+Artisan::command('mk:flag-test-orders {--first-name=E2E}', function () {
+    if (app()->isProduction()) {
+        $this->error('Commande interdite en production.');
+
+        return 1;
+    }
+    $count = Order::query()->where('is_test', false)
+        ->where(fn ($q) => $q->whereRaw("customer_snapshot->>'first_name' = ?", [$this->option('first-name')])
+            ->orWhere(fn ($d) => $d->where('channel', 'whatsapp')->where('status', 'draft')->whereNull('customer_id')))
+        ->update(['is_test' => true]);
+    $this->info("{$count} commande(s) marquée(s) comme test.");
+
+    return 0;
+})->purpose('Marquer les commandes créées par les tests E2E (environnements hors production)');

@@ -43,7 +43,7 @@ export function CustomersPage() {
     <div>
       <PageHeader eyebrow="Commerce" title="Clients" description="Clients invités et comptes. Les invités ne sont pas fusionnés par téléphone (protection des historiques)." />
       <div className="relative mb-5 max-w-md">
-        <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-cocoa-300" aria-hidden />
+        <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-cocoa-400" aria-hidden />
         <Input
           className="pl-9"
           placeholder="Nom, prénom ou téléphone"

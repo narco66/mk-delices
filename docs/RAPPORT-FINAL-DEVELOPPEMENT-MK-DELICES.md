@@ -1,6 +1,6 @@
 # Rapport final de développement — MK Délices
 
-**Date :** 15/11/2026 · **Version :** MVP technique 0.1 · **Environnement de référence :** Windows 11 / Laragon, PHP 8.5.12, PostgreSQL 18.4, Node 22.
+**Date :** 15/11/2026 (mis à jour après la 2e campagne de tests) · **Version :** MVP technique 0.1 · **Environnement de référence :** Windows 11 / Laragon, PHP 8.5.12, PostgreSQL 18.4, Node 22.
 
 > **Conclusion :** l'application est **techniquement prête pour une recette fonctionnelle avec données fictives**. Elle n'est **pas prête pour la production** : catalogue, tarifs, zones, numéro WhatsApp, contrats de paiement, textes juridiques, hébergement et sauvegardes dépendent de décisions de MK Délices (28 points, `DEV-DECISIONS-A-VALIDER.md`).
 
@@ -28,10 +28,9 @@ Parcours complet visiteur → commande → paiement (simulé) → acceptation �
 ## 4. Fonctionnalités partiellement réalisées
 - **Wave** : adaptateur conforme à la documentation publique, jamais exécuté (pas de compte marchand).
 - **Notifications client** : email uniquement ; SMS et WhatsApp Business Platform non branchés.
-- **Téléversement d'images** : implémenté et sécurisé, sans test automatisé.
 - **Chaîne du froid** : contrôles de conditionnement en place ; seuil sanitaire non défini.
-- **Back-office** : toutes les API testées ; tous les écrans compilés/lintés, une partie seulement parcourue en E2E.
-- **Accessibilité** : bonnes pratiques appliquées, audit outillé non réalisé.
+- **Back-office** : toutes les API testées ; parcours navigateur couvrant commandes, préparation, livraisons et espace livreur ; écrans catalogue (édition), contenus, paramètres, utilisateurs, finances non parcourus en navigateur.
+- **Accessibilité** : audit automatique WCAG 2.2 AA conforme (0 violation serious/critical) ; test avec lecteur d'écran par une personne à prévoir.
 
 ## 5. Fonctionnalités bloquées
 Orange Money et carte bancaire (contrats/spécifications), données commerciales officielles, numéro WhatsApp, textes juridiques validés, hébergement/sauvegardes/supervision (décisions D-…). Hors MVP non commencés : points de fidélité, GPS, commandes événementielles.
@@ -43,16 +42,17 @@ Orange Money et carte bancaire (contrats/spécifications), données commerciales
 10 migrations, **42 tables** PostgreSQL (dont 25 tables métier) : identités/permissions, catalogue, paramètres, zones, clients/adresses, promotions, paniers, commandes/lignes/événements, paiements/événements/remboursements, livreurs/zones/missions, contenus, avis, notifications, audit, idempotence, files d'attente. UUID, montants entiers, contraintes CHECK, index unique partiel, triggers d'immuabilité.
 
 ## 8. Tests exécutés et résultats
-PHPUnit **71/71** (629 assertions, PostgreSQL) · Vitest **9/9** · Playwright **10/10** (mobile 360 px + desktop) · TypeScript 0 erreur · ESLint 0 erreur · Pint conforme · build OK · `composer audit` / `npm audit` : 0 vulnérabilité. Scénarios A à H : tous ✅ (B avec prestataire simulé).
+PHPUnit **74/74** (658 assertions, PostgreSQL) · Vitest **9/9** · Playwright **32/32** (mobile 360 px + desktop, dont workflow back-office multi-acteurs et accessibilité) · axe-core : 0 violation serious/critical · TypeScript 0 erreur · ESLint 0 erreur · Pint conforme · build OK · audits : 0 vulnérabilité en production. Scénarios A à H : tous ✅ (B avec prestataire simulé).
 
 ## 9. Anomalies corrigées
-10 anomalies détectées par les tests et corrigées (fuseau PostgreSQL, `MAX(uuid)`, déduplication webhook, session après connexion, créneau suivant, chargement paresseux, `robots.txt`, double React, Vitest sous Windows, dépendances de dev) — détail `DEV-TESTS.md` §4.
+13 anomalies détectées par les tests et corrigées (fuseau PostgreSQL, `MAX(uuid)`, déduplication webhook, session après connexion, créneau suivant, chargement paresseux, `robots.txt`, double React, Vitest sous Windows, dépendances de dev, contrastes WCAG, nom accessible du logo, bouton de commande actif malgré un blocage) — détail `DEV-TESTS.md` §4.
 
 ## 10. Anomalies restantes / points de vigilance
 - Aucune anomalie bloquante connue.
 - 26 avertissements ESLint non bloquants (*fast refresh*, compatibilité react-hook-form/compilateur React).
 - Données de démonstration insérées avant la correction du fuseau : horodatages décalés d'une heure (fictives).
-- Les tests E2E écrivent dans la base de développement (commandes ensuite marquées `is_test`).
+- Les tests E2E écrivent dans la base de développement (commandes automatiquement marquées `is_test` en fin de campagne).
+- 7 vulnérabilités « moderate » dans l'outillage ESLint (minimatch), sans impact en production.
 
 ## 11. Intégrations externes
 | Service | État |
@@ -77,6 +77,6 @@ Voir `README.md` (installation, `scripts/start-dev.ps1`, comptes de démonstrati
 2. Signer un contrat PSP, valider l'adaptateur Wave en sandbox (créer les tests d'intégration correspondants), activer le moyen de paiement.
 3. Choisir l'hébergement ; configurer HTTPS, `SESSION_SECURE_COOKIE`, CSP, sauvegardes chiffrées et test de restauration (T-020), supervision et alertes.
 4. Fournir les photographies et le logo ; remplacer les illustrations.
-5. Étendre les parcours E2E au back-office et à l'espace livreur ; lancer un test de charge (NFR-002) et un audit d'accessibilité.
-6. Initialiser le dépôt Git et activer la CI.
+5. Lancer un test de charge (NFR-002) et un test avec lecteur d'écran ; compléter les parcours E2E des écrans d'administration restants.
+6. Vérifier que le dépôt GitHub est privé et que la CI s'exécute.
 7. Former les équipes (commercial, préparation, livraisons) et réaliser une recette métier avec des commandes de test marquées.

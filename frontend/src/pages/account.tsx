@@ -348,7 +348,7 @@ function AccountAddresses() {
               </p>
               {a.landmark && <p className="text-sm text-cocoa-500">{a.landmark}</p>}
             </div>
-            <button type="button" onClick={() => remove.mutate(a.id)} className="grid size-10 place-items-center rounded-full text-cocoa-300 hover:bg-error-50 hover:text-error-600" aria-label="Supprimer l'adresse">
+            <button type="button" onClick={() => remove.mutate(a.id)} className="grid size-10 place-items-center rounded-full text-cocoa-400 hover:bg-error-50 hover:text-error-600" aria-label="Supprimer l'adresse">
               <Trash2 className="size-4" />
             </button>
           </Card>

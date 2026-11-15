@@ -91,7 +91,7 @@ export function ProductsPage() {
 
       <Card className="mb-5 grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-[1fr_180px_200px_auto]">
         <div className="relative">
-          <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-cocoa-300" aria-hidden />
+          <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-cocoa-400" aria-hidden />
           <Input className="pl-9" placeholder="Rechercher un produit" aria-label="Rechercher un produit" value={filters.q} onChange={(e) => update({ q: e.target.value })} />
         </div>
         <Select aria-label="Filtrer par statut" value={filters.status} onChange={(e) => update({ status: e.target.value })} disabled={filters.archived}>

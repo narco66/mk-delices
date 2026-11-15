@@ -513,10 +513,16 @@ export function CheckoutPage() {
               />
               <Checkbox {...register('marketing_consent')} label="J'accepte de recevoir les offres de MK Délices (facultatif)." />
             </div>
-            <Button type="submit" size="lg" className="mt-4 w-full" loading={submitting} disabled={!quote}>
+            <Button type="submit" size="lg" className="mt-4 w-full" loading={submitting} disabled={!quote || blocking.length > 0} aria-describedby={blocking.length ? 'checkout-blocking' : undefined}>
               Confirmer · {quote ? formatXof(quote.total_xof) : '…'}
             </Button>
-            <p className="mt-2 text-center text-xs text-cocoa-500">Votre commande sera confirmée par MK Délices.</p>
+            {blocking.length > 0 ? (
+              <p id="checkout-blocking" className="mt-2 text-center text-xs font-medium text-warning-600">
+                Corrigez le point signalé ci-dessus pour confirmer.
+              </p>
+            ) : (
+              <p className="mt-2 text-center text-xs text-cocoa-500">Votre commande sera confirmée par MK Délices.</p>
+            )}
 
             <div className="mt-5 border-t border-cocoa-100/70 pt-5">
               <p className="mb-2 text-sm text-cocoa-700">Vous préférez échanger avec nous ?</p>

@@ -13,7 +13,7 @@ Boutique en ligne, commande WhatsApp, paiement, préparation et livraison pour *
 
 | Outil | Version testée |
 |---|---|
-| PHP | ≥ 8.3 (testé 8.5.12) avec `pdo_pgsql`, `gd`, `intl`, `mbstring`, `fileinfo`, `zip` |
+| PHP | ≥ 8.4 (testé 8.5.12) avec `pdo_pgsql`, `gd` (WebP), `dom`, `mbstring`, `fileinfo` — vérifiés par `composer check-platform-reqs` |
 | Composer | 2.x |
 | PostgreSQL | 17 ou 18 (testé 18.4) |
 | Node.js / npm | 22.x / 10.x |

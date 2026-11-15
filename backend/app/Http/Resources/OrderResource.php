@@ -94,6 +94,11 @@ class OrderResource extends JsonResource
             'payments' => $this->when($user?->can('payments.view') && $this->relationLoaded('payments'), fn () => PaymentResource::collection($this->payments)),
             'refunds' => $this->when($user?->can('payments.view') && $this->relationLoaded('refunds'), fn () => RefundResource::collection($this->refunds)),
             'assignments' => $this->whenLoaded('assignments', fn () => AssignmentResource::collection($this->assignments)),
+            'invoices' => $this->when($user?->can('invoices.view') && $this->relationLoaded('invoices'), fn () => $this->invoices->map->summary()->values()),
+            'can_issue_invoice' => $this->when($this->relationLoaded('invoices'), fn () => (bool) $user?->can('invoices.issue') && ! $this->is_test
+                && $this->paid_xof >= $this->total_xof && $this->total_xof > 0
+                && ! in_array($this->status->value, ['draft', 'cancelled', 'rejected'], true)
+                && ! $this->invoices->contains('type', 'invoice')),
         ];
     }
 }

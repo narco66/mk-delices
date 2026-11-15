@@ -59,6 +59,7 @@ class PublicOrderResource extends JsonResource
                 && in_array($this->payment_status->value, ['unpaid', 'failed', 'pending'], true),
             'can_cancel' => $this->status === OrderStatus::PendingConfirmation,
             'can_review' => $this->status === OrderStatus::Delivered,
+            'invoices' => $this->relationLoaded('invoices') ? $this->invoices->map->summary()->values() : [],
             'created_at' => $this->created_at->toIso8601ZuluString(),
         ];
     }

@@ -189,8 +189,29 @@ export interface PublicOrder {
   can_pay: boolean
   can_cancel: boolean
   can_review: boolean
+  invoices: InvoiceSummary[]
   created_at: string
   tracking_token?: string
+}
+
+/** Facture ou avoir (documents immuables, numérotation continue). */
+export interface InvoiceSummary {
+  id: string
+  type: 'invoice' | 'credit_note'
+  type_label: string
+  number: string
+  issued_at: string
+  vat_applicable: boolean
+  total_ht_xof: number
+  total_vat_xof: number
+  total_ttc_xof: number
+  is_test: boolean
+}
+
+export interface InvoiceRow extends InvoiceSummary {
+  order_id: string
+  order_reference: string | null
+  buyer_name: string | null
 }
 
 export interface Me {
@@ -319,6 +340,8 @@ export interface AdminOrder {
   payments?: Payment[]
   refunds?: Refund[]
   assignments?: Assignment[]
+  invoices?: InvoiceSummary[]
+  can_issue_invoice?: boolean
   active_assignment?: Assignment | null
   last_incident?: Assignment | null
 }

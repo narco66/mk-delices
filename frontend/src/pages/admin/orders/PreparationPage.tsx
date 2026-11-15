@@ -1,12 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChefHat, Clock, Snowflake } from 'lucide-react'
+import { ChefHat, Clock, Snowflake, Undo2 } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/Button'
 import { Badge, Card, Modal, PageHeader } from '@/components/ui/Display'
-import { EmptyState, ErrorState, errorMessage, Skeleton } from '@/components/ui/Feedback'
-import { Checkbox, Field, Input } from '@/components/ui/Form'
+import { EmptyState, ErrorState, errorMessage, Notice, Skeleton } from '@/components/ui/Feedback'
+import { Checkbox, Field, Input, Textarea } from '@/components/ui/Form'
 import { useAuth } from '@/features/auth/AuthContext'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/cn'
@@ -37,6 +37,8 @@ interface PrepOrder {
   customer_notes: string | null
   fulfillment_type: string
   requires_cold_chain: boolean
+  /** Annulation du démarrage possible jusqu'à cette heure (null : plus possible). */
+  undo_until: string | null
   items: PrepItem[]
 }
 
@@ -53,6 +55,7 @@ export function PreparationPage() {
   const queryClient = useQueryClient()
   const [date, setDate] = useState('')
   const [readyFor, setReadyFor] = useState<PrepOrder | null>(null)
+  const [undoFor, setUndoFor] = useState<PrepOrder | null>(null)
 
   const { data, isLoading, isError, error, refetch, dataUpdatedAt } = useQuery({
     queryKey: ['admin', 'preparation', date],
@@ -61,11 +64,14 @@ export function PreparationPage() {
   })
 
   const transition = useMutation({
-    mutationFn: ({ order, action }: { order: PrepOrder; action: string }) =>
-      api.post(`/admin/orders/${order.id}/transitions`, { action, expected_version: order.version, packaging_checked: action === 'mark_ready' ? true : undefined }),
+    mutationFn: ({ order, action, reason }: { order: PrepOrder; action: string; reason?: string }) =>
+      api.post(`/admin/orders/${order.id}/transitions`, { action, reason, expected_version: order.version, packaging_checked: action === 'mark_ready' ? true : undefined }),
     onSuccess: (_, { order, action }) => {
-      toast.success(action === 'mark_ready' ? `${order.reference} est prête` : `Préparation de ${order.reference} démarrée`)
+      toast.success(
+        action === 'mark_ready' ? `${order.reference} est prête` : action === 'cancel_preparation' ? `${order.reference} est revenue dans « À préparer »` : `Préparation de ${order.reference} démarrée`,
+      )
       setReadyFor(null)
+      setUndoFor(null)
       queryClient.invalidateQueries({ queryKey: ['admin', 'preparation'] })
     },
     onError: (e) => {
@@ -93,6 +99,17 @@ export function PreparationPage() {
           </div>
         }
       />
+
+      <Notice tone="info" title="Comment fonctionne ce tableau ?" className="mb-6">
+        <p>
+          Chaque carte est une <strong>commande acceptée</strong> par le commercial : elle arrive ici automatiquement. Faites-la avancer avec <strong>« Démarrer la préparation »</strong> puis{' '}
+          <strong>« Marquer prête »</strong> (contrôle du conditionnement obligatoire) ; le responsable des livraisons l'affecte ensuite à un livreur.
+        </p>
+        <p className="mt-1.5">
+          Démarrage fait par erreur ? <strong>« Annuler le démarrage »</strong> reste possible quelques minutes, avec un motif. Pour modifier ou annuler une commande, ouvrez-la (clic sur sa référence) ou
+          prévenez le commercial : les informations de livraison sont figées dès le début de la préparation.
+        </p>
+      </Notice>
 
       {isLoading ? (
         <div className="grid gap-4 lg:grid-cols-3">
@@ -163,6 +180,11 @@ export function PreparationPage() {
                             Marquer prête
                           </Button>
                         )}
+                        {canAct && col.key === 'preparing' && o.undo_until && (
+                          <Button className="mt-2 w-full" size="sm" variant="ghost" icon={<Undo2 className="size-4" />} onClick={() => setUndoFor(o)}>
+                            Annuler le démarrage (jusqu'à {new Date(o.undo_until).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })})
+                          </Button>
+                        )}
                       </Card>
                     </li>
                   ))}
@@ -174,7 +196,34 @@ export function PreparationPage() {
       )}
 
       {readyFor && <ReadyConfirm order={readyFor} loading={transition.isPending} onClose={() => setReadyFor(null)} onConfirm={() => transition.mutate({ order: readyFor, action: 'mark_ready' })} />}
+      {undoFor && <UndoConfirm order={undoFor} loading={transition.isPending} onClose={() => setUndoFor(null)} onConfirm={(reason) => transition.mutate({ order: undoFor, action: 'cancel_preparation', reason })} />}
     </div>
+  )
+}
+
+function UndoConfirm({ order, loading, onClose, onConfirm }: { order: PrepOrder; loading: boolean; onClose: () => void; onConfirm: (reason: string) => void }) {
+  const [reason, setReason] = useState('')
+  return (
+    <Modal
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title={`Annuler le démarrage de ${order.reference} ?`}
+      description="La commande revient dans « À préparer » et redevient modifiable. Le motif est conservé dans l'historique."
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>
+            Retour
+          </Button>
+          <Button disabled={reason.trim().length < 3} loading={loading} onClick={() => onConfirm(reason.trim())}>
+            Annuler le démarrage
+          </Button>
+        </div>
+      }
+    >
+      <Field label="Motif" hint="Ex. : mauvaise commande démarrée">
+        {(p) => <Textarea {...p} rows={3} value={reason} onChange={(e) => setReason(e.target.value)} />}
+      </Field>
+    </Modal>
   )
 }
 

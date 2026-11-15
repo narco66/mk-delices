@@ -20,6 +20,7 @@ class RolesAndPermissionsSeeder extends Seeder
         'preparation.view', 'preparation.manage',
         'deliveries.view', 'deliveries.assign', 'deliveries.settle', 'partners.manage', 'zones.view', 'zones.manage',
         'payments.view', 'payments.manual', 'refunds.request', 'refunds.approve',
+        'invoices.view', 'invoices.issue',
         'stats.view', 'users.manage', 'settings.manage', 'audit.view',
         'courier.missions',
     ];
@@ -28,7 +29,7 @@ class RolesAndPermissionsSeeder extends Seeder
         User::ROLE_COMMERCIAL => [
             'catalog.manage', 'content.manage', 'promotions.manage', 'reviews.moderate', 'orders.view', 'orders.manage',
             'customers.view', 'preparation.view', 'deliveries.view', 'zones.view', 'payments.view', 'payments.manual',
-            'refunds.request', 'stats.view',
+            'refunds.request', 'invoices.view', 'invoices.issue', 'stats.view',
         ],
         User::ROLE_PREPARATEUR => ['preparation.view', 'preparation.manage'],
         User::ROLE_RESP_LIVRAISON => ['deliveries.view', 'deliveries.assign', 'deliveries.settle', 'partners.manage', 'zones.view', 'preparation.view'],

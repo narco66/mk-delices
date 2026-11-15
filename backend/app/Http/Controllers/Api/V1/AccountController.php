@@ -17,7 +17,7 @@ class AccountController extends Controller
 {
     public function orders(Request $request): AnonymousResourceCollection
     {
-        $orders = $this->customer($request)->orders()->where('status', '!=', 'draft')->with('items')->latest()->paginate(20);
+        $orders = $this->customer($request)->orders()->where('status', '!=', 'draft')->with('items', 'invoices')->latest()->paginate(20);
 
         return PublicOrderResource::collection($orders);
     }

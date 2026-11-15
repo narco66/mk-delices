@@ -11,6 +11,7 @@ use App\Domain\Payments\Gateways\GatewayUnavailable;
 use App\Domain\Payments\Gateways\InvalidWebhookSignature;
 use App\Domain\Shared\AuditLogger;
 use App\Domain\Shared\DomainException;
+use App\Jobs\IssueInvoice;
 use App\Jobs\ProcessPaymentEvent;
 use App\Models\Order;
 use App\Models\Payment;
@@ -214,6 +215,7 @@ class PaymentService
                     $this->refunds->requestForOrder($order, $locked->amount_xof, 'Paiement reçu après annulation/refus de la commande', null);
                 }
                 DB::afterCommit(fn () => $this->notifier->paymentConfirmed($order->fresh()));
+                DB::afterCommit(fn () => IssueInvoice::dispatch($order->id));
 
                 return 'confirmed';
             }
@@ -267,6 +269,7 @@ class PaymentService
             $locked->save();
             $this->journal->record($locked, 'payment', $actor, $reason, ['event' => 'payment.manual_recorded', 'payment_id' => $payment->id, 'amount_xof' => $amount, 'method' => $method]);
             $this->audit->log('payment.manual_recorded', $payment, null, ['amount_xof' => $amount, 'method' => $method, 'reason' => $reason]);
+            DB::afterCommit(fn () => IssueInvoice::dispatch($locked->id));
 
             return $payment;
         });

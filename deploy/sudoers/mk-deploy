@@ -1,0 +1,4 @@
+# /etc/sudoers.d/mk-deploy (root:root, 440) — à valider avec : visudo -cf /etc/sudoers.d/mk-deploy
+# Droits STRICTEMENT limités de l'utilisateur de déploiement « deploy » (membre du groupe www-data).
+deploy ALL=(root) NOPASSWD: /usr/local/sbin/mk-backup
+deploy ALL=(root) NOPASSWD: /usr/bin/systemctl reload php8.4-fpm, /usr/bin/systemctl reload php8.5-fpm

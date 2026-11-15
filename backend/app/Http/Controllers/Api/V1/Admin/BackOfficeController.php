@@ -240,6 +240,12 @@ class BackOfficeController extends Controller
             'business.hours' => ['required', 'array:mon,tue,wed,thu,fri,sat,sun'],
             'ordering.closed_dates', 'delivery.proof_types', 'delivery.incident_reasons', 'delivery.client_fault_reasons' => ['present', 'array'],
             'delivery.failed_fee_percent' => ['required', 'integer', 'min:0', 'max:100'],
+            'preparation.undo_window_minutes' => ['required', 'integer', 'min:0', 'max:240'],
+            'invoicing.vat_enabled' => ['required', 'boolean'],
+            'invoicing.vat_rate_percent' => ['required', 'numeric', 'min:0', 'max:100'],
+            'invoicing.vat_exemption_note' => ['required', 'string', 'min:3', 'max:300'],
+            'invoicing.issue_on' => ['required', 'in:delivered,paid'],
+            'invoicing.footer' => ['nullable', 'string', 'max:1000'],
             default => ['nullable', 'string', 'max:5000'],
         };
         validator(['value' => $value], ['value' => $rules])->validate();

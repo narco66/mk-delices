@@ -17,6 +17,7 @@ import { useSeo } from '@/hooks/useSeo'
 import { api, ApiError } from '@/lib/api'
 import { cn } from '@/lib/cn'
 import { formatDateTime, formatSlot, formatXof } from '@/lib/format'
+import { InvoiceList } from '@/features/invoices/InvoiceList'
 import type { Me, Paginated, PublicOrder } from '@/types/api'
 
 function homeFor(me: Me): string {
@@ -266,6 +267,11 @@ function AccountOrders() {
             </p>
             <p className="text-sm text-cocoa-500 capitalize">{formatSlot(o.slot_start_at, o.slot_end_at)}</p>
           </Link>
+          {(o.invoices ?? []).length > 0 && (
+            <div className="mt-2 px-1">
+              <InvoiceList invoices={o.invoices} pathFor={(i) => `/orders/${o.reference}/invoices/${i.number}`} />
+            </div>
+          )}
         </li>
       ))}
     </ul>

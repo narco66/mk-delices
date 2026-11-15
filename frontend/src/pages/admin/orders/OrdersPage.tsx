@@ -1,10 +1,12 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import { ClipboardList, Search } from 'lucide-react'
+import { ClipboardList, Plus, Search } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
+import { ButtonLink } from '@/components/ui/Button'
 import { Badge, Card, PageHeader, StatusPill } from '@/components/ui/Display'
 import { EmptyState, ErrorState, Skeleton } from '@/components/ui/Feedback'
 import { Field, Input, Select } from '@/components/ui/Form'
+import { useAuth } from '@/features/auth/AuthContext'
 import { api, toQuery } from '@/lib/api'
 import { CHANNEL_LABELS, formatDateTime, formatSlot, formatXof } from '@/lib/format'
 import type { AdminOrder } from '@/types/api'
@@ -14,6 +16,7 @@ import { chip, ORDER_STATUS_LABELS, PAYMENT_STATUS_LABELS } from './labels'
 const STATUS_FILTERS = ['draft', 'pending_confirmation', 'accepted', 'preparing', 'ready', 'assigned', 'picked_up', 'delivery_failed', 'delivered', 'cancelled', 'rejected']
 
 export function OrdersPage() {
+  const { can } = useAuth()
   const [params, setParams] = useSearchParams()
   const [search, setSearch] = useState(params.get('q') ?? '')
   const statuses = (params.get('status') ?? '').split(',').filter(Boolean)
@@ -52,7 +55,18 @@ export function OrdersPage() {
 
   return (
     <div>
-      <PageHeader eyebrow="Opérations" title="Commandes" description="Toutes les commandes : statut commercial, financier et logistique." />
+      <PageHeader
+        eyebrow="Opérations"
+        title="Commandes"
+        description="Toutes les commandes : statut commercial, financier et logistique."
+        actions={
+          can('orders.manage') ? (
+            <ButtonLink to="/admin/commandes/nouvelle" icon={<Plus className="size-4" />}>
+              Nouvelle commande
+            </ButtonLink>
+          ) : undefined
+        }
+      />
 
       <Card className="mb-6 space-y-4 p-4">
         <form

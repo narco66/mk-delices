@@ -16,6 +16,17 @@ Les cartes du haut indiquent ce qui demande une action : **À confirmer**, **Bro
 
 > Le statut de la commande et le statut du paiement sont indépendants : « Payée » ne veut pas dire « acceptée », et « Acceptée » ne veut pas dire « payée ».
 
+### Saisir une commande prise par téléphone ou à la boutique
+**Commandes** › **Nouvelle commande** :
+1. **Articles** : choisissez le produit et la quantité, puis **Ajouter** (les boutons − / + / corbeille ajustent chaque ligne). Les prix sont ceux du catalogue, recalculés par le serveur.
+2. **Client** : prénom et téléphone obligatoires ; l'email permet d'envoyer la confirmation et la facture.
+3. **Livraison** : zone (les frais s'ajoutent), quartier, repère, puis un **créneau** parmi ceux réellement disponibles (mêmes délais et capacités que sur le site).
+4. **Validation** : canal (Téléphone ou Boutique), paiement, code promo éventuel, note interne, puis **Créer la commande**.
+
+La commande est créée « En attente de confirmation » : vous êtes redirigé vers sa fiche pour l'**accepter**. Le **lien de suivi** est copié automatiquement : envoyez-le au client par WhatsApp ou SMS.
+- **Paiement « Encaissement à enregistrer »** (espèces, transfert reçu…) : la commande peut être acceptée sans paiement en ligne ; enregistrez l'encaissement depuis sa fiche (**Enregistrer un encaissement**) dès réception.
+- **Paiement « Lien de paiement »** : le client paie en ligne depuis son lien de suivi ; l'acceptation reste bloquée jusqu'à la confirmation du prestataire.
+
 ## 3. Commandes reçues par WhatsApp
 Quand un client envoie son panier par WhatsApp, une commande **Brouillon** apparaît avec la même référence que dans son message (`MKD-XXXX-XXXX`).
 1. Échangez avec le client sur WhatsApp (créneau, adresse).
@@ -34,6 +45,7 @@ Les coordonnées et le créneau sont modifiables **jusqu'au début de la prépar
 ## 6. Paiements et remboursements
 - **Paiements** : toutes les tentatives et les notifications reçues des prestataires. **Rapprocher** interroge le prestataire si un paiement reste « en attente ».
 - **Remboursements** : vous pouvez **demander** un remboursement depuis une commande (montant ≤ montant encaissé). L'**approbation** est faite par une autre personne (double contrôle).
+- **Factures** (Finances › Factures) : la facture est émise **automatiquement** quand une commande payée est livrée, et envoyée par email au client (PDF). Pour un client qui la demande avant la livraison : bouton **« Émettre la facture »** sur la commande (commande intégralement payée). Une facture ne se modifie jamais : un remboursement effectué produit automatiquement un **avoir**. L'**export comptable (CSV)** donne, sur une période, toutes les factures et avoirs (avoirs en négatif) pour l'expert-comptable.
 
 ## 7. Catalogue
 **Catalogue** › **Créer un produit** : nom, catégorie, description, **ingrédients et allergènes (obligatoires avant publication)**, conservation, formats et prix en FCFA. Le produit est créé en **brouillon**, invisible des clients.

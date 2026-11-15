@@ -27,6 +27,7 @@ La direction de MK Délices a validé les propositions de `docs/propositions/`. 
 | D-LIV-02 | Preuve : confirmation du destinataire ou code | — |
 | D-LIV-01 | Courses livrées rémunérées ; **50 % pour un échec dû au client** (client absent, injoignable, refus) — validé et **implémenté** | Pourcentage et motifs modifiables dans Paramètres ; « adresse introuvable » exclue par défaut (faute non attribuable) |
 | Promotion | Code BIENVENUE10 (10 %, plafond 2 000 FCFA) | Créé **inactif** : à activer, avec dates, le jour de l'ouverture |
+| D-JUR-04 | **Factures obligatoires, avec ou sans TVA** — décidé et **implémenté** : facture émise automatiquement à la livraison (ou au paiement, au choix), avoir à chaque remboursement, numérotation continue FA-AAAA-NNNNN / AV-AAAA-NNNNN, documents immuables, PDF envoyé au client et téléchargeable, export CSV comptable | **Faire confirmer par l'expert-comptable** l'assujettissement à la TVA (Paramètres › Facturation et TVA, désactivée par défaut : mention « TVA non applicable ») et le libellé de la mention ; renseigner **raison sociale, NINEA, RCCM, adresse** (obligatoires : sans elles, aucune facture n'est émise en production) |
 | D-JUR-01 / 02 / 03 | Projets de mentions légales, CGV et politique de confidentialité approuvés sur le fond | **Compléter les `[À COMPLÉTER]`, relecture par un juriste, déclaration CDP** ; les pages restent affichées « en attente de validation » |
 
 Les autres lignes du tableau ci-dessous restent ouvertes.
@@ -61,7 +62,7 @@ Les autres lignes du tableau ci-dessous restent ouvertes.
 | D-JUR-01 | Mentions légales | Raison sociale, NINEA/RCCM, hébergeur | Contenus › `mentions-legales`, paramètres `business.legal_name`, `business.ninea` | Trame « à compléter » | 🔴 |
 | D-JUR-02 | CGV | Texte validé par un conseil | Contenus › `conditions-generales` | Trame marquée « en attente de validation » | 🔴 |
 | D-JUR-03 | Données personnelles | Formalités CDP (loi 2008-12), durées de conservation, hébergement hors Sénégal | Contenus › `confidentialite` ; politique de purge à coder une fois les durées fixées | Trame ; aucune purge automatique des données clients | 🔴 |
-| D-JUR-04 | Factures / TVA | Faut-il émettre une facture, appliquer une taxe ? | Non implémenté (aucune taxe ajoutée, conformément aux règles §5) | — | 🟠 |
+| D-JUR-04 | Factures / TVA | ~~Faut-il émettre une facture, appliquer une taxe ?~~ **Décidé** : factures obligatoires, TVA paramétrable (voir tableau des décisions validées) | Paramètres › Facturation et TVA ; Finances › Factures | Implémenté ; assujettissement TVA à confirmer par l'expert-comptable | 🟠 |
 | D-NOT-01 | Notifications client | Canaux autorisés : email (prestataire SMTP), SMS, WhatsApp Business Platform (modèles approuvés) | `MAIL_*` ; nouveaux canaux à brancher sur `OrderNotifier` | Email via journal (`MAIL_MAILER=log`) en dev ; SMS/WhatsApp automatiques non configurés | 🟠 |
 | D-STATS-01 | Taux de conversion | Choix d'un outil d'analytics (sessions qualifiées) et consentement cookies | Indicateur affiché « non mesuré » | — | 🟢 |
 | D-CONT-01 | Témoignages | Avis clients réels et autorisation de publication | Contenus › bloc `home.testimonials` | 2 témoignages **fictifs** avec avertissement visible | 🟠 |

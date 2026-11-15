@@ -8,7 +8,9 @@ Pour : la personne responsable de la plateforme (accès complet). Ce guide compl
    - identité (nom légal, NINEA, téléphone, email, réseaux sociaux) et **numéro WhatsApp Business** (format `221XXXXXXXXX`) ;
    - **horaires de livraison** par jour, jours fermés, durée et capacité des créneaux, délai minimal ;
    - **moyens de paiement** : un moyen n'apparaît aux clients que s'il est activé ici **et** configuré techniquement (contrat marchand) ;
-   - preuves de remise, motifs d'incident, seuil de chaîne du froid.
+   - preuves de remise, motifs d'incident, seuil de chaîne du froid ;
+   - **facturation** : raison sociale, NINEA, RCCM et adresse (sans elles, aucune facture n'est émise) ; TVA activée ou non selon l'avis de l'expert-comptable (taux 18 % par défaut, prix catalogue considérés TTC) ; moment d'émission (livraison ou paiement).
+   Si des factures étaient dues avant que ces mentions soient renseignées : `php artisan mk:issue-invoices --dry-run` puis `php artisan mk:issue-invoices` sur le serveur.
 3. **Livraisons › Zones & tarifs** : créez les zones réelles, frais client, minimum de commande, rémunération livreur.
 4. **Catalogue** : vos vrais produits (voir le guide commercial). Supprimez ou archivez les produits de démonstration s'il en reste.
 5. **Contenus du site** : remplacez les trames juridiques (CGV, confidentialité, mentions légales) par les textes validés par votre conseil.

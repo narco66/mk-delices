@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Domain\Payments\Gateways\SimulatorGateway;
+use App\Domain\Payments\RefundService;
+use App\Domain\Shared\DomainException;
 use App\Models\Payment;
 use App\Models\PaymentEvent;
 use App\Models\Refund;
@@ -136,6 +138,25 @@ class PaymentTest extends TestCase
         $this->actingAs($admin)->postJson("/api/v1/admin/refunds/{$refund->id}/approve")->assertOk()->assertJsonPath('data.status', 'succeeded');
         $this->assertSame('refunded', $order->fresh()->payment_status->value);
         $this->assertSame($order->total_xof, $order->fresh()->refunded_xof);
+    }
+
+    /** Audit E3 : un rejet décidé sur une donnée périmée ne doit jamais écraser un remboursement déjà exécuté. */
+    public function test_stale_reject_cannot_overwrite_executed_refund(): void
+    {
+        [$order, $token] = $this->createOrder();
+        $this->payOrder($order, $token);
+        $this->transition($this->staff(User::ROLE_COMMERCIAL), $order, 'reject', ['reason' => 'Rupture de stock'])->assertOk();
+        $stale = Refund::query()->firstOrFail(); // chargé « requested » par l'approbateur B
+
+        $this->actingAs($this->staff(User::ROLE_ADMIN))->postJson("/api/v1/admin/refunds/{$stale->id}/approve")->assertOk()->assertJsonPath('data.status', 'succeeded');
+
+        try {
+            app(RefundService::class)->reject($stale, $this->staff(User::ROLE_ADMIN), 'Doublon');
+            $this->fail('Le rejet aurait dû être refusé.');
+        } catch (DomainException $e) {
+            $this->assertSame('refund_not_pending', $e->errorCode);
+        }
+        $this->assertSame('succeeded', $stale->fresh()->status);
     }
 
     public function test_requester_cannot_approve_own_refund_and_refund_is_capped(): void

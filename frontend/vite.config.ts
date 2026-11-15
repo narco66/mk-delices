@@ -43,7 +43,9 @@ export default defineConfig(({ mode }) => {
       rollupOptions: {
         output: {
           manualChunks(id) {
-            if (id.includes('recharts') || id.includes('d3-')) return 'charts'
+            // Pas de groupe forcé pour les graphiques (audit E6) : il attirait des modules partagés (et le cœur de
+            // React) dans un chunk préchargé par toute la boutique. Recharts suit désormais le chargement à la
+            // demande du tableau de bord admin.
             if (/node_modules[/\\](react|react-dom|scheduler|react-router)[/\\]/.test(id)) return 'react'
           },
         },

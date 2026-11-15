@@ -7,7 +7,7 @@
 Monolithe modulaire (TRD §1) :
 
 ```
-Navigateur (SPA React)  ──/api/v1, /sanctum──▶  API Laravel 13 (PHP ≥ 8.3)  ──▶  PostgreSQL 18
+Navigateur (SPA React)  ──/api/v1, /sanctum──▶  API Laravel 13 (PHP ≥ 8.4)  ──▶  PostgreSQL 18
         ▲                                         │   ├─ file d'attente (table jobs) : webhooks, emails
         │ HTML initial + méta SEO                 │   ├─ planificateur : rapprochement paiements, purge
         └──────────── SpaController ◀─────────────┘   └─ stockage public : images WebP

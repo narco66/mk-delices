@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/Button'
 import { Badge, Card, PageHeader } from '@/components/ui/Display'
 import { ErrorState, Notice, Skeleton } from '@/components/ui/Feedback'
-import { Field, Input, Textarea } from '@/components/ui/Form'
+import { Field, Input, Select, Textarea } from '@/components/ui/Form'
 import { api } from '@/lib/api'
 import { PAYMENT_LABELS } from '@/lib/format'
 import { TagInput, Toggle } from '../catalog/shared'
@@ -29,6 +29,7 @@ const GROUP_LABELS: Record<string, string> = {
   policies: 'Politiques',
   delivery: 'Livraison',
   quality: 'Qualité et chaîne du froid',
+  invoicing: 'Facturation et TVA',
 }
 const DAYS: [string, string][] = [
   ['mon', 'Lundi'],
@@ -49,9 +50,16 @@ const INTEGER_KEYS = [
   'ordering.max_qty_per_line',
   'quality.cold_chain_max_minutes',
   'delivery.failed_fee_percent',
+  'invoicing.vat_rate_percent',
 ]
 const LIST_KEYS = ['ordering.closed_dates', 'delivery.proof_types', 'delivery.incident_reasons', 'delivery.client_fault_reasons']
-const LONG_TEXT_KEYS = ['policies.cancellation']
+const LONG_TEXT_KEYS = ['policies.cancellation', 'invoicing.footer']
+const SELECT_KEYS: Record<string, [string, string][]> = {
+  'invoicing.issue_on': [
+    ['delivered', 'À la livraison'],
+    ['paid', 'Dès le paiement confirmé'],
+  ],
+}
 
 export function SettingsPage() {
   const queryClient = useQueryClient()
@@ -170,6 +178,17 @@ function SettingEditor({ setting, value, onChange }: { setting: SettingItem; val
           onChange(raw === '' ? null : Number(raw))
         }}
       />
+    )
+  }
+  if (SELECT_KEYS[key]) {
+    return (
+      <Select aria-label={setting.description ?? key} className="max-w-xs" value={(value as string) ?? ''} onChange={(e) => onChange(e.target.value)}>
+        {SELECT_KEYS[key].map(([v, label]) => (
+          <option key={v} value={v}>
+            {label}
+          </option>
+        ))}
+      </Select>
     )
   }
   if (LIST_KEYS.includes(key)) {

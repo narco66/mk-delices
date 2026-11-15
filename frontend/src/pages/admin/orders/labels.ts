@@ -46,6 +46,7 @@ export const ACTION_LABELS: Record<string, string> = {
   reject: 'Refuser',
   cancel: 'Annuler',
   start_preparation: 'Démarrer la préparation',
+  cancel_preparation: 'Annuler le démarrage',
   mark_ready: 'Marquer prête',
   hand_over_pickup: 'Remis au client (retrait)',
 }

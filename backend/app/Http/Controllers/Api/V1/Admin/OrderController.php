@@ -2,17 +2,20 @@
 
 namespace App\Http\Controllers\Api\V1\Admin;
 
+use App\Domain\Cart\CartService;
 use App\Domain\Orders\CheckoutService;
 use App\Domain\Orders\OrderStateMachine;
 use App\Domain\Payments\PaymentService;
 use App\Domain\Payments\RefundService;
 use App\Domain\Shared\DomainException;
+use App\Domain\Shared\Idempotency;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\OrderResource;
 use App\Http\Resources\PaymentResource;
 use App\Http\Resources\RefundResource;
 use App\Models\Order;
 use App\Models\Payment;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\DB;
@@ -20,6 +23,50 @@ use Illuminate\Support\Facades\DB;
 class OrderController extends Controller
 {
     public function __construct(private readonly OrderStateMachine $machine) {}
+
+    /**
+     * Commande saisie par l'équipe (téléphone, boutique) à partir d'un panier de travail (en-têtes X-Cart-Id / X-Cart-Token) :
+     * prix, créneau, stock et promotions sont recalculés exactement comme pour une commande en ligne.
+     */
+    public function store(Request $request, CartService $carts, CheckoutService $checkout, Idempotency $idempotency): JsonResponse
+    {
+        $delivery = $request->input('fulfillment_type', 'delivery') === 'delivery';
+        $data = $request->validate([
+            'channel' => ['required', 'in:phone,backoffice'],
+            'customer.first_name' => ['required', 'string', 'min:2', 'max:80'],
+            'customer.last_name' => ['nullable', 'string', 'max:80'],
+            'customer.phone' => ['required', 'string', 'max:30', 'regex:/^[+0-9 ().-]{9,20}$/'],
+            'customer.email' => ['nullable', 'email:rfc', 'max:160'],
+            'fulfillment_type' => ['nullable', 'in:delivery,pickup'],
+            'delivery' => [$delivery ? 'required' : 'nullable', 'array'],
+            'delivery.zone_id' => [$delivery ? 'required' : 'nullable', 'uuid'],
+            'delivery.district' => [$delivery ? 'required' : 'nullable', 'string', 'min:2', 'max:120'],
+            'delivery.street' => ['nullable', 'string', 'max:200'],
+            'delivery.landmark' => ['nullable', 'string', 'max:255'],
+            'slot_start_at' => ['required', 'date'],
+            'payment_method' => ['nullable', 'string', 'max:30'],
+            'promotion_code' => ['nullable', 'string', 'max:40'],
+            'notes' => ['nullable', 'string', 'max:500'],
+            'internal_notes' => ['nullable', 'string', 'max:2000'],
+        ], [], [
+            'customer.first_name' => 'prénom', 'customer.phone' => 'téléphone', 'customer.email' => 'email',
+            'delivery.zone_id' => 'zone de livraison', 'delivery.district' => 'quartier', 'slot_start_at' => 'créneau',
+        ]);
+        $cart = $carts->resolve((string) $request->header('X-Cart-Id'), $request->header('X-Cart-Token'));
+
+        $result = $idempotency->run('admin.orders', $request->header('Idempotency-Key'), $data + ['cart_id' => $cart->id], function () use ($cart, $data, $checkout, $request) {
+            $placed = $checkout->placeOrder($cart, $data, null, $request->user());
+
+            return ['status' => 201, 'body' => ['data' => [
+                'id' => $placed['order']->id,
+                'reference' => $placed['order']->reference,
+                'total_xof' => $placed['order']->total_xof,
+                'tracking_token' => $placed['tracking_token'],
+            ]]];
+        });
+
+        return response()->json($result['body'], $result['status']);
+    }
 
     public function index(Request $request): AnonymousResourceCollection
     {
@@ -62,7 +109,7 @@ class OrderController extends Controller
 
     public function show(Request $request, Order $order): OrderResource
     {
-        $order->load(['items', 'zone', 'events.actor', 'payments.events', 'refunds.requester', 'refunds.approver', 'assignments.partner']);
+        $order->load(['items', 'zone', 'events.actor', 'payments.events', 'refunds.requester', 'refunds.approver', 'assignments.partner', 'invoices']);
 
         return OrderResource::make($order)->additional(['meta' => ['available_actions' => $this->machine->availableActions($order, $request->user())]]);
     }

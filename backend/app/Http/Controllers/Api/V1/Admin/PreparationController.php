@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Api\V1\Admin;
 
+use App\Domain\Orders\OrderStateMachine;
+use App\Domain\Shared\Settings;
 use App\Http\Controllers\Controller;
 use App\Models\Order;
 use Illuminate\Http\JsonResponse;
@@ -13,7 +15,7 @@ use Illuminate\Http\Request;
  */
 class PreparationController extends Controller
 {
-    public function index(Request $request): JsonResponse
+    public function index(Request $request, OrderStateMachine $machine, Settings $settings): JsonResponse
     {
         $request->validate(['date' => ['nullable', 'date']]);
         $orders = Order::query()
@@ -25,6 +27,7 @@ class PreparationController extends Controller
             ->get();
 
         $now = now();
+        $undoMinutes = (int) $settings->get('preparation.undo_window_minutes', 15);
         $data = $orders->map(fn (Order $o) => [
             'id' => $o->id,
             'reference' => $o->reference,
@@ -40,6 +43,8 @@ class PreparationController extends Controller
             'fulfillment_type' => $o->fulfillment_type,
             'accepted_at' => $o->accepted_at?->toIso8601ZuluString(),
             'preparing_at' => $o->preparing_at?->toIso8601ZuluString(),
+            // Annulation d'un démarrage par erreur : possible jusqu'à cette heure (null = plus possible).
+            'undo_until' => $machine->withinUndoWindow($o) ? $o->preparing_at->copy()->addMinutes($undoMinutes)->toIso8601ZuluString() : null,
             'ready_at' => $o->ready_at?->toIso8601ZuluString(),
             'requires_cold_chain' => $o->items->contains(fn ($i) => (bool) $i->product?->requires_cold_chain),
             'items' => $o->items->map(fn ($i) => [

@@ -41,11 +41,15 @@ class CheckoutService
     /**
      * Confirme le panier en commande « pending_confirmation » (ou convertit atomiquement le brouillon WhatsApp du même panier).
      *
+     * $staff : commande saisie au back-office (téléphone, boutique) par un membre de l'équipe. Mêmes règles de prix,
+     * créneau, stock et promotion que sur le site ; le moyen de paiement peut rester vide (encaissement enregistré
+     * ensuite depuis la commande) et le client n'est jamais rattaché au compte de l'employé.
+     *
      * @return array{order: Order, tracking_token: string}
      */
-    public function placeOrder(Cart $cart, array $data, ?User $user): array
+    public function placeOrder(Cart $cart, array $data, ?User $user, ?User $staff = null): array
     {
-        return DB::transaction(function () use ($cart, $data, $user) {
+        return DB::transaction(function () use ($cart, $data, $user, $staff) {
             /** @var Cart $cart */
             $cart = Cart::query()->lockForUpdate()->findOrFail($cart->id);
             $existing = $cart->converted_order_id ? Order::query()->lockForUpdate()->find($cart->converted_order_id) : null;
@@ -62,14 +66,14 @@ class CheckoutService
             if ($method !== null && ! in_array($method, $available, true)) {
                 throw DomainException::unprocessable('payment_method_unavailable', 'Ce moyen de paiement n\'est pas disponible.');
             }
-            if ($method === null && $available !== []) {
+            if ($method === null && $available !== [] && ! $staff) {
                 throw DomainException::unprocessable('payment_method_required', 'Veuillez choisir un moyen de paiement.');
             }
 
             $slot = $this->slots->reserve((string) $data['slot_start_at'], $quote->leadMinutes, $existing?->id);
-            $customer = $this->resolveCustomer($data['customer'], $user, (bool) ($data['marketing_consent'] ?? false));
+            $customer = $this->resolveCustomer($data['customer'], $staff ? null : $user, ! $staff && (bool) ($data['marketing_consent'] ?? false));
 
-            $order = $existing ?? new Order(['reference' => OrderReference::generate(), 'channel' => 'web']);
+            $order = $existing ?? new Order(['reference' => OrderReference::generate(), 'channel' => $staff ? ($data['channel'] ?? 'phone') : 'web']);
             $from = $existing?->status->value;
             $order->fill([
                 'customer_id' => $customer->id,
@@ -84,9 +88,13 @@ class CheckoutService
                 'slot_start_at' => $slot['start'],
                 'slot_end_at' => $slot['end'],
                 'customer_notes' => $data['notes'] ?? null,
-                'terms_accepted_at' => now(),
+                // Commande saisie par l'équipe : le client n'a pas coché les CGV en ligne.
+                'terms_accepted_at' => $staff ? null : now(),
                 'confirmed_at' => now(),
             ]);
+            if ($staff && ! empty($data['internal_notes'])) {
+                $order->internal_notes = $data['internal_notes'];
+            }
             $this->applyQuote($order, $quote);
             $order->version = ($order->version ?? 0) + 1;
             $token = $this->tracking->issue($order);
@@ -99,7 +107,10 @@ class CheckoutService
             }
             $cart->update(['converted_order_id' => $order->id, 'customer_id' => $customer->id]);
 
-            $this->journal->record($order, 'status', $user, null, ['action' => 'checkout', 'channel' => $order->channel], $from, OrderStatus::PendingConfirmation->value);
+            $this->journal->record($order, 'status', $staff ?? $user, null, ['action' => $staff ? 'backoffice_entry' : 'checkout', 'channel' => $order->channel], $from, OrderStatus::PendingConfirmation->value);
+            if ($staff) {
+                $this->audit->log('order.backoffice_created', $order, null, ['reference' => $order->reference, 'channel' => $order->channel, 'total_xof' => $order->total_xof]);
+            }
             DB::afterCommit(fn () => $this->notifier->orderStatusChanged($order->fresh(), OrderStatus::PendingConfirmation));
 
             return ['order' => $order->fresh('items'), 'tracking_token' => $token];

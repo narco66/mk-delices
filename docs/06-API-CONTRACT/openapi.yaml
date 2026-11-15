@@ -13,6 +13,8 @@ tags:
 - name: Orders
 - name: Delivery
 - name: Admin
+- name: Mobile
+  description: Authentification de l'application mobile par jeton Bearer (voir docs/API-MOBILE.md)
 components:
   securitySchemes:
     sessionCookie:
@@ -23,7 +25,49 @@ components:
       type: apiKey
       in: header
       name: X-Tracking-Token
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: >-
+        Application mobile : jeton d'accès par appareil obtenu via POST /auth/token (ou /auth/register avec
+        device_name). En-tête « Authorization: Bearer <jeton> ». Expire après 30 jours, révocable. Aucun cookie
+        ni jeton CSRF requis. Accepté sur toutes les routes protégées, avec les mêmes permissions que la session web.
+    cartToken:
+      type: apiKey
+      in: header
+      name: X-Cart-Token
+      description: Accompagne X-Cart-Id (identifiant du panier) sur les routes /cart et /checkout.
   schemas:
+    AuthUser:
+      type: object
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+        email: {type: string, format: email}
+        phone: {type: [string, 'null']}
+        roles: {type: array, items: {type: string, enum: [admin, commercial, preparateur, resp_livraison, livreur, client]}}
+        permissions: {type: array, items: {type: string}}
+        is_staff: {type: boolean}
+        is_courier: {type: boolean}
+        customer:
+          type: [object, 'null']
+          properties:
+            id: {type: string, format: uuid}
+            first_name: {type: string}
+            last_name: {type: [string, 'null']}
+            phone: {type: string}
+            marketing_consent: {type: boolean}
+    MobileToken:
+      type: object
+      properties:
+        data:
+          type: object
+          required: [token, token_type, user]
+          properties:
+            token: {type: string, description: À conserver dans le stockage sécurisé de l'appareil (Keychain / Keystore)}
+            token_type: {const: Bearer}
+            expires_at: {type: [string, 'null'], format: date-time}
+            user: {$ref: '#/components/schemas/AuthUser'}
     Error:
       type: object
       required:
@@ -403,13 +447,142 @@ paths:
               schema:
                 type: object
       x-access-role: Authentifié
+      description: Session web fermée ; avec un jeton Bearer, seul le jeton de cet appareil est révoqué.
+      security:
+      - sessionCookie: []
+      - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+  /auth/token:
+    post:
+      summary: Application mobile — obtenir un jeton d'accès pour cet appareil
+      operationId: POST__auth_token
+      tags:
+      - Mobile
+      x-access-role: Tout compte actif (client, livreur, équipe)
+      description: >-
+        Limité à 5 tentatives par minute et par email (20 par adresse IP). Le jeton en clair n'est renvoyé
+        qu'une fois ; il est stocké haché côté serveur. Au-delà de 10 appareils, les plus anciens sont déconnectés.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              additionalProperties: true
+              required: [email, password, device_name]
+              properties:
+                email: {type: string, format: email, maxLength: 160}
+                password: {type: string, maxLength: 200}
+                device_name: {type: string, minLength: 2, maxLength: 100, example: iPhone de Fatou}
+      responses:
+        '201':
+          description: Jeton émis
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MobileToken'
+        '401': {description: Identifiants incorrects (code invalid_credentials), content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '403': {description: Compte désactivé (code account_disabled), content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '422': {description: Champ manquant ou invalide, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '429': {description: Trop de tentatives, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+  /auth/register:
+    post:
+      summary: Créer un compte client (avec device_name, renvoie un jeton mobile)
+      operationId: POST__auth_register
+      tags:
+      - Mobile
+      x-access-role: Public (rôle client uniquement)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [first_name, email, phone, password, password_confirmation, accepted_privacy]
+              properties:
+                first_name: {type: string, minLength: 2, maxLength: 80}
+                last_name: {type: string, maxLength: 80}
+                email: {type: string, format: email}
+                phone: {type: string, description: Numéro sénégalais, example: 77 123 45 67}
+                password: {type: string, minLength: 10, description: Lettres et chiffres}
+                password_confirmation: {type: string}
+                accepted_privacy: {type: boolean, const: true}
+                marketing_consent: {type: boolean}
+                device_name: {type: string, description: "Si présent, un jeton mobile est renvoyé au lieu d'une session web"}
+      responses:
+        '201':
+          description: Compte créé (jeton si device_name)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MobileToken'
+        '422': {description: "Email déjà utilisé, téléphone ou mot de passe invalide", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+  /auth/me:
+    get:
+      summary: Utilisateur connecté, rôles et permissions
+      operationId: GET__auth_me
+      tags:
+      - Mobile
+      security:
+      - sessionCookie: []
+      - bearerAuth: []
+      responses:
+        '200':
+          description: Profil
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: {$ref: '#/components/schemas/AuthUser'}
+        '401': {description: Non authentifié ou jeton expiré/révoqué, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+  /auth/tokens:
+    get:
+      summary: Appareils connectés (jetons actifs)
+      operationId: GET__auth_tokens
+      tags:
+      - Mobile
+      security:
+      - bearerAuth: []
+      - sessionCookie: []
+      responses:
+        '200':
+          description: Liste des appareils
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: {type: integer}
+                        device_name: {type: string}
+                        last_used_at: {type: [string, 'null'], format: date-time}
+                        expires_at: {type: [string, 'null'], format: date-time}
+                        created_at: {type: string, format: date-time}
+                        current: {type: boolean, description: Jeton utilisé pour cette requête}
+  /auth/tokens/{id}:
+    delete:
+      summary: Déconnecter un appareil (ex. téléphone perdu)
+      operationId: DELETE__auth_tokens_id
+      tags:
+      - Mobile
+      security:
+      - bearerAuth: []
+      - sessionCookie: []
+      parameters:
+      - {name: id, in: path, required: true, schema: {type: integer}}
+      responses:
+        '204': {description: Appareil déconnecté}
+        '404': {description: Jeton inconnu ou appartenant à un autre compte, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
   /admin/orders:
     get:
       summary: Liste paginée

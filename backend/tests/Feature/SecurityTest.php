@@ -61,6 +61,17 @@ class SecurityTest extends TestCase
         $this->postJson('/api/v1/auth/login', ['email' => 'inconnu@test.local', 'password' => 'mauvais'])->assertStatus(429)->assertJsonPath('error.code', 'too_many_requests');
     }
 
+    /** Audit E1 : un en-tête X-Forwarded-For forgé ne doit ni changer l'IP retenue ni contourner la limitation. */
+    public function test_forged_forwarded_for_header_does_not_bypass_login_throttling(): void
+    {
+        for ($i = 0; $i < 5; $i++) {
+            $this->postJson('/api/v1/auth/login', ['email' => 'cible@test.local', 'password' => 'essai-'.$i], ['X-Forwarded-For' => "203.0.113.{$i}"])->assertStatus(401);
+        }
+        $this->postJson('/api/v1/auth/login', ['email' => 'cible@test.local', 'password' => 'essai-6'], ['X-Forwarded-For' => '198.51.100.77'])
+            ->assertStatus(429);
+        $this->assertSame(0, AuditLog::query()->where('ip_address', 'like', '203.0.113.%')->count(), "IP forgée enregistrée dans le journal d'audit");
+    }
+
     public function test_disabled_user_loses_access_immediately(): void
     {
         $user = $this->staff(User::ROLE_COMMERCIAL);

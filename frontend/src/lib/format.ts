@@ -18,6 +18,12 @@ export function formatDate(iso: string | null | undefined): string {
   return new Intl.DateTimeFormat('fr-FR', { timeZone: TZ, weekday: 'long', day: 'numeric', month: 'long' }).format(new Date(iso))
 }
 
+/** Date d'un document (facture, avoir) : toujours avec l'année, « 15 nov. 2026 ». Audit M14. */
+export function formatDocumentDate(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  return new Intl.DateTimeFormat('fr-FR', { timeZone: TZ, dateStyle: 'medium' }).format(new Date(iso))
+}
+
 export function formatTime(iso: string | null | undefined): string {
   if (!iso) return '—'
   return new Intl.DateTimeFormat('fr-FR', { timeZone: TZ, hour: '2-digit', minute: '2-digit' }).format(new Date(iso)).replace(':', 'h')

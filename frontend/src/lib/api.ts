@@ -96,6 +96,31 @@ export const api = {
   delete: <T>(path: string, options?: RequestOptions) => request<T>('DELETE', path, options),
 }
 
+/**
+ * Téléchargement d'un fichier protégé (PDF, CSV) : la requête porte la session et les en-têtes
+ * (ex. X-Tracking-Token), ce qu'un simple lien <a href> ne permet pas.
+ */
+export async function downloadFile(path: string, filename: string, headers: Record<string, string> = {}): Promise<void> {
+  let response: Response
+  try {
+    response = await fetch(BASE + path, { headers: { 'X-Requested-With': 'XMLHttpRequest', ...headers }, credentials: 'include' })
+  } catch {
+    throw new ApiError(0, 'network_error', 'Connexion impossible. Vérifiez votre réseau puis réessayez.')
+  }
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null)
+    throw new ApiError(response.status, payload?.error?.code ?? 'http_error', payload?.error?.message ?? 'Téléchargement impossible.')
+  }
+  const url = URL.createObjectURL(await response.blob())
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
 /** Clé d'idempotence pour les créations de commande et de session de paiement. */
 export function newIdempotencyKey(prefix = 'mkd'): string {
   return `${prefix}-${crypto.randomUUID()}`

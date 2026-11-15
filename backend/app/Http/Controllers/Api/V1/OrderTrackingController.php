@@ -2,18 +2,22 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Domain\Invoicing\InvoicePdf;
 use App\Domain\Orders\OrderStateMachine;
 use App\Domain\Orders\OrderTracking;
 use App\Domain\Orders\WhatsAppMessageBuilder;
 use App\Domain\Payments\PaymentService;
 use App\Domain\Payments\PaymentStatus;
 use App\Domain\Shared\DomainException;
+use App\Http\Controllers\Api\V1\Admin\InvoiceController;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\PublicOrderResource;
+use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\Review;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 
 /**
  * Accès « propriétaire » à une commande : jeton de suivi secret (X-Tracking-Token)
@@ -25,7 +29,7 @@ class OrderTrackingController extends Controller
 
     public function status(Request $request, string $reference): PublicOrderResource
     {
-        return new PublicOrderResource($this->order($request, $reference)->load('items'));
+        return new PublicOrderResource($this->order($request, $reference)->load('items', 'invoices'));
     }
 
     public function pay(Request $request, string $reference, PaymentService $payments): JsonResponse
@@ -58,7 +62,7 @@ class OrderTrackingController extends Controller
             $payments->reconcile($payment);
         }
 
-        return new PublicOrderResource($order->fresh('items'));
+        return new PublicOrderResource($order->fresh(['items', 'invoices']));
     }
 
     public function cancel(Request $request, string $reference, OrderStateMachine $machine): PublicOrderResource
@@ -66,7 +70,7 @@ class OrderTrackingController extends Controller
         $data = $request->validate(['reason' => ['required', 'string', 'min:3', 'max:300']]);
         $order = $machine->cancelByCustomer($this->order($request, $reference), $data['reason']);
 
-        return new PublicOrderResource($order->fresh('items'));
+        return new PublicOrderResource($order->fresh(['items', 'invoices']));
     }
 
     public function whatsapp(Request $request, string $reference, WhatsAppMessageBuilder $whatsapp): JsonResponse
@@ -104,6 +108,15 @@ class OrderTrackingController extends Controller
         ]);
 
         return response()->json(['data' => ['id' => $review->id, 'moderation_status' => 'pending']], 201);
+    }
+
+    /** Facture ou avoir de la commande (PDF), pour son propriétaire uniquement. */
+    public function invoice(Request $request, string $reference, string $number, InvoicePdf $pdf): Response
+    {
+        $order = $this->order($request, $reference);
+        $invoice = Invoice::query()->where('order_id', $order->id)->where('number', strtoupper($number))->firstOrFail();
+
+        return InvoiceController::pdfResponse($invoice, $pdf);
     }
 
     private function order(Request $request, string $reference): Order

@@ -13,11 +13,15 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rules\Password;
+use Laravel\Sanctum\PersonalAccessToken;
 use Spatie\Permission\Models\Permission;
 
 /**
- * Authentification par session Sanctum (cookies HttpOnly + CSRF), aucun jeton en localStorage (TRD §5).
+ * Authentification Sanctum à deux modes :
+ * - site web (SPA) : session par cookies HttpOnly + CSRF, aucun jeton en localStorage (TRD §5) ;
+ * - application mobile : jeton d'accès par appareil (« Authorization: Bearer »), expirant et révocable.
  */
 class AuthController extends Controller
 {
@@ -50,9 +54,64 @@ class AuthController extends Controller
         return response()->json(['data' => $this->present($user)]);
     }
 
+    /**
+     * Application mobile : échange email + mot de passe contre un jeton d'accès propre à l'appareil
+     * (en-tête « Authorization: Bearer <jeton> »). Mêmes règles que la connexion web : limitation des
+     * tentatives, compte actif obligatoire, journal d'audit. Le jeton n'est renvoyé qu'une seule fois.
+     */
+    public function issueToken(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'email' => ['required', 'email', 'max:160'],
+            'password' => ['required', 'string', 'max:200'],
+            'device_name' => ['required', 'string', 'min:2', 'max:100'],
+        ]);
+        $user = User::query()->where('email', mb_strtolower($data['email']))->first();
+        // Hachage calculé même si l'email est inconnu : temps de réponse identique (pas d'énumération).
+        $valid = Hash::check($data['password'], $user?->password ?? self::DUMMY_HASH) && $user !== null;
+        if (! $valid) {
+            $this->audit->log('auth.login_failed', null, null, ['email_hash' => hash('sha256', mb_strtolower($data['email'])), 'channel' => 'mobile']);
+
+            throw new DomainException('invalid_credentials', 'Identifiants incorrects.', 401);
+        }
+        if (! $user->is_active) {
+            throw new DomainException('account_disabled', 'Ce compte est désactivé.', 403);
+        }
+        $user->forceFill(['last_login_at' => now()])->save();
+
+        return response()->json(['data' => $this->tokenPayload($user, $data['device_name'])], 201);
+    }
+
+    /** Appareils connectés (jetons actifs) de l'utilisateur ; le jeton courant est signalé. */
+    public function tokens(Request $request): JsonResponse
+    {
+        $current = $this->currentToken($request)?->id;
+
+        return response()->json(['data' => $request->user()->tokens()->latest('last_used_at')->get()->map(fn (PersonalAccessToken $t) => [
+            'id' => $t->id,
+            'device_name' => $t->name,
+            'last_used_at' => $t->last_used_at?->toIso8601ZuluString(),
+            'expires_at' => $t->expires_at?->toIso8601ZuluString(),
+            'created_at' => $t->created_at?->toIso8601ZuluString(),
+            'current' => $t->id === $current,
+        ])]);
+    }
+
+    /** Déconnexion d'un appareil précis (ex. téléphone perdu). */
+    public function revokeToken(Request $request, string $id): Response
+    {
+        $token = $request->user()->tokens()->whereKey($id)->firstOrFail();
+        $token->delete();
+        $this->audit->log('auth.token_revoked', $request->user(), null, ['device_name' => $token->name]);
+
+        return response()->noContent();
+    }
+
     public function register(Request $request): JsonResponse
     {
         $data = $request->validate([
+            // Renseigné par l'application mobile : un jeton est renvoyé au lieu d'ouvrir une session web.
+            'device_name' => ['nullable', 'string', 'min:2', 'max:100'],
             'first_name' => ['required', 'string', 'min:2', 'max:80'],
             'last_name' => ['nullable', 'string', 'max:80'],
             'email' => ['required', 'email:rfc', 'max:160', 'unique:users,email'],
@@ -85,6 +144,9 @@ class AuthController extends Controller
 
             return $user;
         });
+        if (! empty($data['device_name'])) {
+            return response()->json(['data' => $this->tokenPayload($user, $data['device_name'])], 201);
+        }
         Auth::guard('web')->login($user);
         if ($request->hasSession()) {
             $request->session()->regenerate();
@@ -95,6 +157,13 @@ class AuthController extends Controller
 
     public function logout(Request $request): Response
     {
+        // Application mobile : seul le jeton de cet appareil est révoqué.
+        if ($token = $this->currentToken($request)) {
+            $token->delete();
+            $this->audit->log('auth.token_revoked', $request->user(), null, ['device_name' => $token->name]);
+
+            return response()->noContent();
+        }
         Auth::guard('web')->logout();
         if ($request->hasSession()) {
             $request->session()->invalidate();
@@ -107,6 +176,36 @@ class AuthController extends Controller
     public function me(Request $request): JsonResponse
     {
         return response()->json(['data' => $this->present($request->user())]);
+    }
+
+    /** Nombre maximal d'appareils connectés par compte : au-delà, les plus anciens jetons sont révoqués. */
+    private const MAX_DEVICES = 10;
+
+    /** Empreinte bcrypt d'une valeur aléatoire, utilisée quand l'email est inconnu (temps constant). */
+    private const DUMMY_HASH = '$2y$12$gBQyo6dQMRO5vThpx.nqreQAjUvtECJV.uu./XVBVR2ryoXo4NOga';
+
+    private function tokenPayload(User $user, string $deviceName): array
+    {
+        $minutes = (int) config('sanctum.expiration');
+        $expiresAt = $minutes > 0 ? now()->addMinutes($minutes) : null;
+        $issued = $user->createToken(mb_substr($deviceName, 0, 100), ['*'], $expiresAt);
+        $keep = $user->tokens()->latest('id')->limit(self::MAX_DEVICES)->pluck('id');
+        $user->tokens()->whereNotIn('id', $keep)->delete();
+        $this->audit->log('auth.token_issued', $user, null, ['device_name' => $issued->accessToken->name], $user->id);
+
+        return [
+            'token' => $issued->plainTextToken,
+            'token_type' => 'Bearer',
+            'expires_at' => $expiresAt?->toIso8601ZuluString(),
+            'user' => $this->present($user),
+        ];
+    }
+
+    private function currentToken(Request $request): ?PersonalAccessToken
+    {
+        $token = $request->user()?->currentAccessToken();
+
+        return $token instanceof PersonalAccessToken ? $token : null;
     }
 
     private function present(User $user): array

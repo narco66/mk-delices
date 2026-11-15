@@ -12,6 +12,7 @@ import {
   MapPin,
   Menu,
   Package,
+  ReceiptText,
   ScrollText,
   Settings,
   Star,
@@ -63,6 +64,7 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
     items: [
       { to: '/admin/paiements', label: 'Paiements', icon: <CreditCard />, permission: 'payments.view' },
       { to: '/admin/remboursements', label: 'Remboursements', icon: <Undo2 />, permission: 'payments.view' },
+      { to: '/admin/factures', label: 'Factures', icon: <ReceiptText />, permission: 'invoices.view' },
     ],
   },
   {

@@ -50,7 +50,9 @@ return [
     |
     */
 
-    'expiration' => null,
+    // Durée de vie des jetons de l'application mobile, en minutes (30 jours par défaut).
+    // N'affecte pas la session par cookie du site web.
+    'expiration' => (int) env('SANCTUM_TOKEN_EXPIRATION', 60 * 24 * 30),
 
     /*
     |--------------------------------------------------------------------------

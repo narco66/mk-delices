@@ -1,4 +1,4 @@
-# Crontab (utilisateur www-data) — copier dans /etc/cron.d/mk-delices
+# Crontab — copier dans /etc/cron.d/mk-delices (root:root, 644). Prérequis : /etc/mk-delices/backup.env (voir deploy/backup.env.example) et mkdir -p /var/log/mk-delices.
 # Planificateur Laravel : rapprochement des paiements (5 min), purge des paniers expirés (03:30 Dakar).
 * * * * * www-data cd /var/www/mk-delices/backend && php artisan schedule:run >> /dev/null 2>&1
 # Sauvegarde chiffrée quotidienne de PostgreSQL + médias (02:00 UTC = 02:00 Dakar).

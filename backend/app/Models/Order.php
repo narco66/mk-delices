@@ -80,6 +80,18 @@ class Order extends Model
         return $this->hasMany(Payment::class)->orderBy('created_at');
     }
 
+    /** Facture de vente (une seule par commande). */
+    public function invoice(): HasOne
+    {
+        return $this->hasOne(Invoice::class)->where('type', Invoice::TYPE_INVOICE);
+    }
+
+    /** Facture et avoirs, dans l'ordre d'émission. */
+    public function invoices(): HasMany
+    {
+        return $this->hasMany(Invoice::class)->orderBy('issued_at')->orderBy('sequence');
+    }
+
     public function refunds(): HasMany
     {
         return $this->hasMany(Refund::class)->orderBy('created_at');

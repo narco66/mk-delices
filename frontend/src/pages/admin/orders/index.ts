@@ -1,5 +1,7 @@
 export { OrdersPage } from './OrdersPage'
 export { OrderDetailPage } from './OrderDetailPage'
+export { NewOrderPage } from './NewOrderPage'
 export { PreparationPage } from './PreparationPage'
 export { PaymentsPage } from './PaymentsPage'
 export { RefundsPage } from './RefundsPage'
+export { InvoicesPage } from './InvoicesPage'

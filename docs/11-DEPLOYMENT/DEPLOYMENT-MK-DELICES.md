@@ -15,7 +15,7 @@
 | Statut | Proposition de référence ; à valider par MK Délices |
 | Localisation | Dakar, Sénégal |
 | Monnaie / fuseau | XOF / Africa/Dakar (UTC+0) |
-| Socle préconisé | React + TypeScript + Vite ; Laravel 13 / PHP ≥ 8.3 ; PostgreSQL |
+| Socle préconisé | React + TypeScript + Vite ; Laravel 13 / PHP ≥ 8.4 (dépendances Symfony 8.4 ; Ubuntu 24.04 : PPA ondrej/php) ; PostgreSQL |
 | Hypothèses | Catalogue, prix, zones, frais, prestataires et identité visuelle à confirmer |
 
 **Convention :** « DOIT » = exigence impérative ; « DEVRAIT » = souhaitable ; « option » = hors MVP ou à arbitrer. Les exemples de tarifs, d'adresses, de parfums et de durées ne constituent jamais des données commerciales officielles. Toutes les valeurs monétaires sont enregistrées en unités entières de XOF.
@@ -42,6 +42,25 @@ Une VM/VPS Linux administrée, reverse proxy Nginx HTTPS, application PHP-FPM La
 - Recharger PHP-FPM/queues, purger caches contrôlés, exécuter health checks.
 - Effectuer smoke tests : catalogue, prix devis, création commande fictive contrôlée, accès admin, disponibilité webhooks.
 - Surveiller logs, latences et erreurs ; effectuer rollback applicatif si seuil dépassé.
+
+### 3.1 Mise en œuvre (scripts du dépôt, corrections de l'audit du 15/11/2026)
+
+| Élément | Fichier | Installation sur le serveur |
+|---|---|---|
+| Déploiement | `deploy/scripts/deploy.sh <tag>` | Lancé par l'utilisateur `deploy` (groupe `www-data`). Production : `APP_DIR=/var/www/mk-delices`. Préproduction : `APP_DIR=/var/www/mk-delices-staging SMOKE_AUTH=utilisateur:motdepasse`. `PHP_FPM=php8.4-fpm` (ou 8.5). |
+| Droits sudo limités | `deploy/sudoers/mk-deploy` | `/etc/sudoers.d/mk-deploy` (440), vérifier avec `visudo -cf` |
+| Sauvegarde | `deploy/scripts/backup.sh` + `deploy/backup.env.example` | `/etc/mk-delices/backup.env` (root, 600) ; enveloppe `deploy/sbin/mk-backup` → `/usr/local/sbin/mk-backup` ; cron root 02:00 (`deploy/cron/mk-delices`) ; `mkdir -p /var/log/mk-delices` |
+| Test de restauration | `deploy/scripts/restore-test.sh <db-*.dump.gpg>` | Sur une machine isolée, au moins une fois par mois : sommes de contrôle obligatoires, archive des médias vérifiée |
+| Nginx | `deploy/nginx/mk-delices.conf`, `mk-delices-staging.conf` | Dossiers distincts ; `/up` accessible sans mot de passe en préproduction |
+
+Comportement du script de déploiement :
+1. sauvegarde préalable (sauf `SKIP_BACKUP=1` au premier déploiement) ;
+2. build du frontend et vérification des dépendances **dans une copie de travail temporaire, site toujours en ligne** ;
+3. maintenance → bascule du code → dépendances → migrations additives → caches → permissions `storage/` et `bootstrap/cache` (groupe `www-data`) → redémarrage des workers → remise en ligne ;
+4. **en cas d'échec après la mise en maintenance, le site reste en maintenance** et le script indique la commande de retour à la version précédente (mémorisée dans `.deployed-ref`, ancien build conservé dans `frontend/dist.old`) ;
+5. tests de fumée sur l'URL réelle (`APP_URL` ou `BASE_URL`).
+
+Les anciens fichiers JS/CSS sont conservés à chaque déploiement : les onglets déjà ouverts continuent de fonctionner.
 
 ## 4. Supervision et alertes
 

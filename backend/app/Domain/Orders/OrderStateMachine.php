@@ -6,6 +6,7 @@ use App\Domain\Payments\RefundService;
 use App\Domain\Shared\AuditLogger;
 use App\Domain\Shared\DomainException;
 use App\Domain\Shared\Settings;
+use App\Jobs\IssueInvoice;
 use App\Models\Order;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
@@ -25,6 +26,8 @@ class OrderStateMachine
         'reject' => [['pending_confirmation'], 'rejected', 'orders.manage', true],
         'cancel' => [['draft', 'pending_confirmation', 'accepted', 'preparing', 'delivery_failed'], 'cancelled', 'orders.manage', true],
         'start_preparation' => [['accepted'], 'preparing', 'preparation.manage', false],
+        // Correction d'un démarrage par erreur : limitée dans le temps, motif obligatoire, tracée.
+        'cancel_preparation' => [['preparing'], 'accepted', 'preparation.manage', true],
         'mark_ready' => [['preparing'], 'ready', 'preparation.manage', false],
         'hand_over_pickup' => [['ready'], 'delivered', 'orders.manage', false],
     ];
@@ -57,6 +60,9 @@ class OrderStateMachine
                 continue;
             }
             if ($name === 'hand_over_pickup' && $order->fulfillment_type !== 'pickup') {
+                continue;
+            }
+            if ($name === 'cancel_preparation' && ! $this->withinUndoWindow($order)) {
                 continue;
             }
             $actions[] = $name;
@@ -118,7 +124,8 @@ class OrderStateMachine
         $from = $order->status;
         $order->status = $to;
         $order->version++;
-        $timestamp = match ($to) {
+        $undo = $from === OrderStatus::Preparing && $to === OrderStatus::Accepted;
+        $timestamp = $undo ? null : match ($to) {
             OrderStatus::PendingConfirmation => 'confirmed_at',
             OrderStatus::Accepted => 'accepted_at',
             OrderStatus::Preparing => 'preparing_at',
@@ -129,6 +136,11 @@ class OrderStateMachine
         };
         if ($timestamp) {
             $order->{$timestamp} = now();
+        }
+        if ($undo) {
+            // Démarrage annulé : la commande redevient modifiable, comme avant la préparation.
+            $order->preparing_at = null;
+            $order->details_locked = false;
         }
         if ($to === OrderStatus::Preparing) {
             // Destinataire, téléphone, créneau et consignes gelés au passage en préparation (PRD §7).
@@ -141,6 +153,9 @@ class OrderStateMachine
 
         $this->journal->record($order, 'status', $actor, $reason, $metadata, $from->value, $to->value);
         DB::afterCommit(fn () => $this->notifier->orderStatusChanged($order->fresh(), $to));
+        if ($to === OrderStatus::Delivered) {
+            DB::afterCommit(fn () => IssueInvoice::dispatch($order->id));
+        }
     }
 
     private function guard(Order $order, string $action, array $context): void
@@ -153,12 +168,24 @@ class OrderStateMachine
         if ($action === 'mark_ready' && empty($context['packaging_checked'])) {
             throw DomainException::unprocessable('packaging_check_required', 'Le contrôle du conditionnement doit être confirmé avant de marquer la commande prête.');
         }
+        if ($action === 'cancel_preparation' && ! $this->withinUndoWindow($order)) {
+            throw DomainException::conflict('undo_window_expired', 'Le démarrage ne peut plus être annulé : le délai de correction est dépassé. Contactez le commercial si la commande doit être annulée.');
+        }
         if ($action === 'hand_over_pickup' && $order->fulfillment_type !== 'pickup') {
             throw DomainException::conflict('not_pickup', 'Cette commande doit être livrée par un livreur.');
         }
         if ($action === 'submit' && ! $order->items()->exists()) {
             throw DomainException::unprocessable('cart_empty', 'La commande ne contient aucun article.');
         }
+    }
+
+    /** Délai pendant lequel un démarrage de préparation peut être annulé (paramètre preparation.undo_window_minutes). */
+    public function withinUndoWindow(Order $order): bool
+    {
+        $minutes = (int) $this->settings->get('preparation.undo_window_minutes', 15);
+
+        return $order->status === OrderStatus::Preparing && $order->preparing_at !== null && $minutes > 0
+            && $order->preparing_at->greaterThan(now()->subMinutes($minutes));
     }
 
     /** Annulation à l'initiative du client (lien de suivi), uniquement avant acceptation commerciale. */

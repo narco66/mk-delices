@@ -64,3 +64,33 @@ test('Scénarios D + E : de la commande payée à la remise avec preuve', async 
   await expect(page.getByText('Livrée').first()).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Votre avis compte' })).toBeVisible()
 })
+
+test('Préparation démarrée par erreur : annulation depuis la fiche commande, avec motif', async ({ page, browser }) => {
+  test.setTimeout(120_000)
+  const reference = await placePaidOrder(page)
+
+  const commercial = await actor(browser, page, 'commercial@mk-delices.test')
+  await commercial.goto(`/admin/commandes?q=${reference}`)
+  await commercial.getByRole('link', { name: reference }).locator('visible=true').first().click()
+  await commercial.getByRole('button', { name: 'Accepter', exact: true }).click()
+  await expect(commercial.getByText('Acceptée').first()).toBeVisible()
+
+  const preparer = await actor(browser, page, 'preparateur@mk-delices.test')
+  await preparer.goto('/admin/preparation')
+  const card = () => preparer.locator('li').filter({ has: preparer.getByRole('link', { name: reference, exact: true }) })
+  await card().getByRole('button', { name: 'Démarrer la préparation' }).click()
+  await expect(card().getByRole('button', { name: /Annuler le démarrage/ })).toBeVisible()
+
+  // Depuis la fiche commande (régression corrigée : le bouton n'ouvrait aucune fenêtre).
+  await card().getByRole('link', { name: reference, exact: true }).click()
+  await preparer.getByRole('button', { name: 'Annuler le démarrage' }).click()
+  const dialog = preparer.getByRole('dialog')
+  await expect(dialog.getByRole('heading', { name: 'Annuler le démarrage de la préparation' })).toBeVisible()
+  await dialog.getByRole('button', { name: 'Confirmer' }).click()
+  await expect(dialog.getByText('Indiquez un motif (3 caractères minimum).')).toBeVisible()
+  await dialog.getByRole('textbox').fill('Démarrée par erreur (test E2E)')
+  await dialog.getByRole('button', { name: 'Confirmer' }).click()
+  await expect(dialog).toBeHidden()
+  await expect(preparer.getByText('Commande : Acceptée')).toBeVisible()
+  await expect(preparer.getByText('Démarrée par erreur (test E2E)')).toBeVisible()
+})

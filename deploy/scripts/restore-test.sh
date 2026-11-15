@@ -14,7 +14,16 @@ if [[ "${PGHOST}" != "127.0.0.1" && "${PGHOST}" != "localhost" && "${ALLOW_REMOT
 fi
 
 start=$(date +%s)
-sha256sum --check --ignore-missing "$(dirname "$dump")"/SHA256SUMS-* 2>/dev/null || echo "Avertissement : somme de contrôle non vérifiée"
+dir="$(cd "$(dirname "$dump")" && pwd)"
+stamp="$(basename "$dump" | sed -E 's/^db-(.+)\.dump\.gpg$/\1/')"
+# Intégrité obligatoire : une sauvegarde altérée ne doit jamais être restaurée.
+(cd "$dir" && sha256sum --check "SHA256SUMS-$stamp")
+media="$dir/media-$stamp.tar.gz.gpg"
+if [[ -f "$media" ]]; then
+  gpg --batch --decrypt "$media" | tar -tzf - > /dev/null && echo "Archive des médias lisible : $(basename "$media")"
+else
+  echo "Avertissement : archive des médias absente pour $stamp" >&2
+fi
 createdb "$target_db"
 # La clé privée GPG est importée temporairement sur la machine de test uniquement.
 gpg --batch --decrypt "$dump" | pg_restore --no-owner --no-privileges --dbname "$target_db"

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle2, Circle, Clock, CreditCard, FlaskConical, Loader2, MessageCircle, PackageCheck, ShieldCheck, Star, Undo2, XCircle } from 'lucide-react'
+import { CheckCircle2, Circle, Clock, CreditCard, FileText, FlaskConical, Loader2, MessageCircle, PackageCheck, ShieldCheck, Star, Undo2, XCircle } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
@@ -7,6 +7,7 @@ import { Button, buttonClass, ButtonLink } from '@/components/ui/Button'
 import { Card, Modal, Price, StatusPill } from '@/components/ui/Display'
 import { EmptyState, ErrorState, errorMessage, Notice, Spinner } from '@/components/ui/Feedback'
 import { Field, Textarea } from '@/components/ui/Form'
+import { InvoiceList } from '@/features/invoices/InvoiceList'
 import { usePublicConfig } from '@/hooks/usePublicData'
 import { useSeo } from '@/hooks/useSeo'
 import { api, ApiError, newIdempotencyKey } from '@/lib/api'
@@ -454,6 +455,18 @@ export function TrackingPage() {
           </div>
         </dl>
       </Card>
+
+      {(order.invoices ?? []).length > 0 && (
+        <Card className="mt-6 p-6">
+          <h2 className="flex items-center gap-2 font-semibold">
+            <FileText className="size-4 text-caramel-600" aria-hidden /> Factures
+          </h2>
+          <p className="mt-1 text-sm text-cocoa-500">Votre facture est émise à la livraison ; un avoir accompagne chaque remboursement.</p>
+          <div className="mt-3">
+            <InvoiceList invoices={order.invoices} pathFor={(i) => `/orders/${order.reference}/invoices/${i.number}`} headers={trackingHeaders(token)} />
+          </div>
+        </Card>
+      )}
 
       {order.can_review && <ReviewForm order={order} token={token} />}
 

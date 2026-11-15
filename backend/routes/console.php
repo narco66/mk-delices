@@ -1,6 +1,7 @@
 <?php
 
 use App\Domain\Catalog\CatalogImporter;
+use App\Domain\Invoicing\InvoiceService;
 use App\Domain\Payments\PaymentService;
 use App\Domain\Payments\PaymentStatus;
 use App\Domain\Shared\AuditLogger;
@@ -56,8 +57,11 @@ Artisan::command('mk:purge-expired', function () {
     $this->info("Paniers supprimés : {$carts} ; clés d'idempotence : {$keys}.");
 })->purpose('Purger paniers expirés et clés d\'idempotence');
 
-Schedule::command('mk:reconcile-payments')->everyFiveMinutes()->withoutOverlapping();
+// Verrou limité à 10 min (audit E10) : un processus tué ne bloque plus le rapprochement 24 h.
+Schedule::command('mk:reconcile-payments')->everyFiveMinutes()->withoutOverlapping(10);
+Schedule::command('queue:prune-failed', ['--hours' => 720])->dailyAt('03:45')->timezone('Africa/Dakar');
 Schedule::command('mk:purge-expired')->dailyAt('03:30')->timezone('Africa/Dakar');
+Schedule::command('sanctum:prune-expired', ['--hours' => 24])->dailyAt('03:40')->timezone('Africa/Dakar');
 
 /** Marque comme commandes de test celles créées par les tests E2E (prénom « E2E »), hors production uniquement. */
 Artisan::command('mk:flag-test-orders {--first-name=E2E}', function () {
@@ -119,3 +123,26 @@ Artisan::command('mk:import-content {slug} {file} {--title= : titre de la page} 
 
     return 0;
 })->purpose('Charger un texte validé dans une page du site');
+
+/** Rattrapage : émet les factures dues non émises (ex. mentions légales complétées après coup). Idempotent. */
+Artisan::command('mk:issue-invoices {--dry-run : Afficher sans émettre}', function (InvoiceService $invoices) {
+    $issued = 0;
+    $due = 0;
+    Order::query()->where('is_test', false)->whereColumn('paid_xof', '>=', 'total_xof')->where('total_xof', '>', 0)
+        ->whereNotIn('status', ['draft', 'cancelled', 'rejected'])->whereDoesntHave('invoice')
+        ->orderBy('created_at')->each(function (Order $order) use ($invoices, &$issued, &$due) {
+            if (! $invoices->isDue($order)) {
+                return;
+            }
+            $due++;
+            if (! $this->option('dry-run') && $invoices->issueIfDue($order)) {
+                $issued++;
+            }
+        });
+    $this->info($this->option('dry-run') ? "{$due} facture(s) à émettre." : "{$issued} facture(s) émise(s) sur {$due} due(s).");
+    if (! $this->option('dry-run') && $issued < $due) {
+        $this->warn('Émission bloquée pour certaines commandes : voir le journal d\'audit (invoice.blocked).');
+    }
+
+    return 0;
+})->purpose('Émettre les factures dues qui ne l\'ont pas encore été');

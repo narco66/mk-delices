@@ -7,6 +7,7 @@ use App\Domain\Orders\OrderPaymentStatus;
 use App\Domain\Payments\Gateways\GatewayUnavailable;
 use App\Domain\Shared\AuditLogger;
 use App\Domain\Shared\DomainException;
+use App\Jobs\IssueInvoice;
 use App\Models\Order;
 use App\Models\Payment;
 use App\Models\Refund;
@@ -91,14 +92,19 @@ class RefundService
         if (! $approver->can('refunds.approve')) {
             throw DomainException::forbidden();
         }
-        if ($refund->status !== 'requested') {
-            throw DomainException::conflict('refund_not_pending', 'Ce remboursement a déjà été traité.');
-        }
-        $refund->update(['status' => 'rejected', 'approved_by' => $approver->id, 'approved_at' => now()]);
-        $this->audit->log('refund.rejected', $refund, null, ['reason' => $reason]);
-        $this->journal->record($refund->order, 'refund', $approver, $reason, ['event' => 'refund.rejected', 'refund_id' => $refund->id]);
 
-        return $refund;
+        // Verrou + relecture (audit E3) : une approbation concurrente en cours d'exécution ne peut pas être écrasée.
+        return DB::transaction(function () use ($refund, $approver, $reason) {
+            $locked = Refund::query()->lockForUpdate()->findOrFail($refund->id);
+            if ($locked->status !== 'requested') {
+                throw DomainException::conflict('refund_not_pending', 'Ce remboursement a déjà été traité.');
+            }
+            $locked->update(['status' => 'rejected', 'approved_by' => $approver->id, 'approved_at' => now()]);
+            $this->audit->log('refund.rejected', $locked, null, ['reason' => $reason]);
+            $this->journal->record($locked->order, 'refund', $approver, $reason, ['event' => 'refund.rejected', 'refund_id' => $locked->id]);
+
+            return $locked;
+        });
     }
 
     /** Confirme l'exécution effective d'un remboursement approuvé (référence prestataire ou pièce). */
@@ -132,6 +138,8 @@ class RefundService
         $order->save();
         $this->journal->record($order, 'refund', $actor, null, ['event' => 'refund.completed', 'refund_id' => $refund->id, 'amount_xof' => $refund->amount_xof]);
         $this->audit->log('refund.completed', $refund, null, ['provider_ref' => $providerRef]);
+        // Commande déjà facturée : l'avoir correspondant est émis automatiquement.
+        DB::afterCommit(fn () => IssueInvoice::dispatch($order->id, $refund->id));
 
         return $refund;
     }

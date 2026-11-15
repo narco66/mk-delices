@@ -35,7 +35,8 @@ return [
         // key => [group, default, is_public, requires_validation, description]
         'business.name' => ['business', 'MK Délices', true, false, 'Nom commercial affiché'],
         'business.legal_name' => ['business', null, true, true, 'Raison sociale exacte (à fournir)'],
-        'business.ninea' => ['business', null, true, true, 'NINEA / RCCM (à fournir)'],
+        'business.ninea' => ['business', null, true, true, 'NINEA (à fournir) — obligatoire sur les factures'],
+        'business.rccm' => ['business', null, true, true, 'Numéro RCCM (à fournir) — porté sur les factures'],
         'business.whatsapp_number' => ['business', null, true, true, 'Numéro WhatsApp Business au format international sans + (ex. 221XXXXXXXXX)'],
         'business.phone' => ['business', null, true, true, 'Téléphone service client'],
         'business.email' => ['business', null, true, true, 'Email service client'],
@@ -64,7 +65,14 @@ return [
         'delivery.proof_types' => ['delivery', ['recipient_confirmation', 'photo_reference', 'code'], false, true, 'Types de preuve de remise acceptés'],
         'delivery.incident_reasons' => ['delivery', ['client_absent', 'adresse_introuvable', 'client_injoignable', 'refus_client', 'produit_endommage', 'autre'], false, false, 'Motifs d\'échec de livraison'],
         'delivery.failed_fee_percent' => ['delivery', 50, false, true, 'Part de la rémunération due au livreur pour une course échouée par la faute du client (%)'],
-        'delivery.client_fault_reasons' => ['delivery', ['client_absent', 'client_injoignable', 'refus_client'], false, true, 'Motifs d\x27échec considérés comme dus au client (course rémunérée au pourcentage ci-dessus)'],
+        'delivery.client_fault_reasons' => ['delivery', ['client_absent', 'client_injoignable', 'refus_client'], false, true, 'Motifs d’échec considérés comme dus au client (course rémunérée au pourcentage ci-dessus)'],
+        // Facturation : les prix affichés sont TTC ; la TVA (si applicable) est extraite du prix TTC.
+        'invoicing.vat_enabled' => ['invoicing', false, false, true, 'Appliquer la TVA sur les factures (assujettissement à confirmer par l’expert-comptable)'],
+        'invoicing.vat_rate_percent' => ['invoicing', 18, false, true, 'Taux de TVA en % (taux normal au Sénégal : 18 %)'],
+        'invoicing.vat_exemption_note' => ['invoicing', 'TVA non applicable', false, true, 'Mention portée sur les factures sans TVA (fondement à préciser par l’expert-comptable)'],
+        'invoicing.issue_on' => ['invoicing', 'delivered', false, true, 'Émission automatique de la facture : delivered (à la livraison) ou paid (au paiement confirmé)'],
+        'invoicing.footer' => ['invoicing', null, false, true, 'Mentions complémentaires en pied de facture (conditions de paiement, coordonnées bancaires…)'],
+        'preparation.undo_window_minutes' => ['preparation', 15, false, false, 'Délai (minutes) pendant lequel un démarrage de préparation fait par erreur peut être annulé (0 = jamais)'],
         'quality.cold_chain_max_minutes' => ['quality', null, false, true, 'Durée maximale hors froid (seuil sanitaire à valider par MK Délices)'],
     ],
 ];

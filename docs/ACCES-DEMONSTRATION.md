@@ -19,6 +19,8 @@ powershell -ExecutionPolicy Bypass -File scripts\start-dev.ps1
 
 Utiliser **`localhost`** (et non `127.0.0.1`) pour la boutique : c'est l'adresse configurée pour le retour de paiement.
 
+**Application mobile :** la même API est accessible par jeton d'accès (`POST /api/v1/auth/token` avec email, mot de passe et nom de l'appareil, puis en-tête `Authorization: Bearer …`) ; les comptes ci-dessous fonctionnent. Guide d'intégration : [API-MOBILE.md](API-MOBILE.md).
+
 ## 2. Comptes
 
 **Mot de passe commun à tous les comptes de démonstration : `Demo-MKD-2026`**
@@ -48,6 +50,7 @@ Générées par `DemoActivitySeeder` à travers les vrais services de l'applicat
 | Commandes | ≈ 80 commandes sur 30 jours (hors lundis), dont des commandes du jour **dans chaque état** : à confirmer (payée et non payée), acceptée, en préparation, prête, confiée au livreur, en livraison, échec de livraison, ainsi que 2 brouillons WhatsApp |
 | Paiements | Paiements confirmés par le prestataire simulé ; un code promo de démonstration (DEMO10) utilisé sur certaines commandes |
 | Remboursements | Commandes refusées après paiement, remboursements approuvés par un second utilisateur (double contrôle) |
+| Factures | Une facture par commande livrée (série `TEST-FA-…`, mention « sans valeur fiscale » hors production), PDF téléchargeable dans le back-office (Finances › Factures), le suivi de commande et l'espace client ; export CSV comptable |
 | Livraisons | Missions livrées avec preuve, échecs « client absent » (course payée 50 %) et « produit abîmé » (non payée), relivraisons, règlements des livreurs (sauf la dernière semaine, laissée à régler) |
 | Clients | ≈ 80 clients invités fictifs et 3 comptes clients avec adresse enregistrée |
 | Avis | Avis approuvés (visibles sur les fiches produits) et avis en attente de modération |

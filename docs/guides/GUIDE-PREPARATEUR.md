@@ -20,6 +20,10 @@ Chaque carte indique : la référence, le **créneau de livraison** (les plus ur
    Le bouton **Confirmer** ne s'active qu'une fois la case cochée.
 4. La commande passe dans **Prêtes** ; le responsable des livraisons est prévenu.
 
+Il n'y a ni « ajouter » ni « supprimer » sur cet écran : chaque carte est une **commande** acceptée par le commercial, qui arrive ici toute seule. La référence ouvre la fiche complète de la commande.
+
+**Démarrage par erreur ?** Sur la carte, **Annuler le démarrage** (affiché avec l'heure limite) remet la commande dans « À préparer » et la rend de nouveau modifiable. Un motif est demandé et conservé dans l'historique. Ce bouton disparaît après le délai de correction (15 minutes par défaut, réglable par l'administrateur : Paramètres › `preparation.undo_window_minutes`).
+
 ## En cas de problème
 - **Ingrédient manquant ou produit impropre** : ne marquez pas la commande prête. Prévenez immédiatement le commercial, qui contactera le client et décidera (report ou annulation avec remboursement).
 - **Retard** : prévenez le responsable des livraisons pour qu'il anticipe.

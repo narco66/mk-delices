@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\V1\AccountController;
 use App\Http\Controllers\Api\V1\Admin\BackOfficeController as BO;
 use App\Http\Controllers\Api\V1\Admin\DeliveryController;
 use App\Http\Controllers\Api\V1\Admin\FinanceController;
+use App\Http\Controllers\Api\V1\Admin\InvoiceController;
 use App\Http\Controllers\Api\V1\Admin\OrderController;
 use App\Http\Controllers\Api\V1\Admin\PreparationController;
 use App\Http\Controllers\Api\V1\Admin\ProductController;
@@ -58,15 +59,20 @@ Route::middleware('throttle:api')->group(function () {
         Route::post('orders/{ref}/cancel', [OrderTrackingController::class, 'cancel']);
         Route::post('orders/{ref}/whatsapp-draft', [OrderTrackingController::class, 'whatsapp']);
         Route::post('orders/{ref}/reviews', [OrderTrackingController::class, 'review']);
+        Route::get('orders/{ref}/invoices/{number}', [OrderTrackingController::class, 'invoice']);
     });
 
     // ---- Authentification (session Sanctum) ----------------------------------------------------
     Route::post('auth/login', [AuthController::class, 'login'])->middleware('throttle:login');
     Route::post('auth/register', [AuthController::class, 'register'])->middleware('throttle:login');
+    // ---- Application mobile : jeton d'accès par appareil (Authorization: Bearer) --------------
+    Route::post('auth/token', [AuthController::class, 'issueToken'])->middleware('throttle:login');
 
     Route::middleware(['auth:sanctum', 'active'])->group(function () {
         Route::post('auth/logout', [AuthController::class, 'logout']);
         Route::get('auth/me', [AuthController::class, 'me']);
+        Route::get('auth/tokens', [AuthController::class, 'tokens']);
+        Route::delete('auth/tokens/{id}', [AuthController::class, 'revokeToken'])->whereNumber('id');
 
         // Espace client
         Route::prefix('account')->group(function () {
@@ -95,6 +101,7 @@ Route::middleware('throttle:api')->group(function () {
 
             Route::middleware('permission:orders.view')->group(function () {
                 Route::get('orders', [OrderController::class, 'index']);
+                Route::post('orders', [OrderController::class, 'store'])->middleware('permission:orders.manage');
                 Route::patch('orders/{order}/details', [OrderController::class, 'updateDetails'])->middleware('permission:orders.manage');
                 Route::post('orders/{order}/payments/manual', [OrderController::class, 'manualPayment'])->middleware('permission:payments.manual');
                 Route::post('orders/{order}/refunds', [OrderController::class, 'requestRefund'])->middleware('permission:refunds.request');
@@ -114,6 +121,12 @@ Route::middleware('throttle:api')->group(function () {
                 Route::post('payments/{payment}/reconcile', [OrderController::class, 'reconcilePayment']);
                 Route::get('refunds', [FinanceController::class, 'refundIndex']);
             });
+            Route::middleware('permission:invoices.view')->group(function () {
+                Route::get('invoices', [InvoiceController::class, 'index']);
+                Route::get('invoices/export', [InvoiceController::class, 'export']);
+                Route::get('invoices/{invoice}/pdf', [InvoiceController::class, 'pdf']);
+            });
+            Route::post('orders/{order}/invoice', [InvoiceController::class, 'issue'])->middleware('permission:invoices.issue');
             Route::middleware('permission:refunds.approve')->group(function () {
                 Route::post('refunds/{refund}/approve', [FinanceController::class, 'approve']);
                 Route::post('refunds/{refund}/reject', [FinanceController::class, 'reject']);

@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, ArrowLeft, Banknote, Pencil, RefreshCw, Undo2 } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Banknote, FileText, Pencil, RefreshCw, Undo2 } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { useForm } from 'react-hook-form'
 import { Link, useParams } from 'react-router'
@@ -11,6 +11,7 @@ import { Badge, Card, Modal, PageHeader, StatusPill } from '@/components/ui/Disp
 import { ErrorState, errorMessage, Notice, Skeleton } from '@/components/ui/Feedback'
 import { Checkbox, Field, Input, Select, Textarea } from '@/components/ui/Form'
 import { useAuth } from '@/features/auth/AuthContext'
+import { InvoiceList } from '@/features/invoices/InvoiceList'
 import { api, ApiError } from '@/lib/api'
 import { allergenLabel, CHANNEL_LABELS, formatDateTime, formatSlot, formatXof, PAYMENT_LABELS } from '@/lib/format'
 import type { AdminOrder, OrderEvent, Zone } from '@/types/api'
@@ -21,7 +22,7 @@ interface OrderDetailResponse {
   meta: { available_actions: string[] }
 }
 
-const DESTRUCTIVE = ['reject', 'cancel']
+const DESTRUCTIVE = ['reject', 'cancel', 'cancel_preparation']
 
 export function OrderDetailPage() {
   const { id = '' } = useParams()
@@ -59,6 +60,15 @@ export function OrderDetailPage() {
     mutationFn: (paymentId: string) => api.post(`/admin/payments/${paymentId}/reconcile`),
     onSuccess: () => {
       toast.success('Rapprochement effectué auprès du prestataire')
+      refetch()
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+
+  const issueInvoice = useMutation({
+    mutationFn: () => api.post<{ data: { number: string } }>(`/admin/orders/${id}/invoice`),
+    onSuccess: (res) => {
+      toast.success(`Facture ${res.data.number} émise`)
       refetch()
     },
     onError: (e) => toast.error(errorMessage(e)),
@@ -246,6 +256,26 @@ export function OrderDetailPage() {
               )}
             </Card>
           )}
+
+          {can('invoices.view') && (
+            <Card className="p-5">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-lg font-semibold">Factures</h2>
+                {order.can_issue_invoice && (
+                  <Button size="sm" icon={<FileText className="size-4" />} loading={issueInvoice.isPending} onClick={() => issueInvoice.mutate()}>
+                    Émettre la facture
+                  </Button>
+                )}
+              </div>
+              {(order.invoices ?? []).length === 0 ? (
+                <p className="text-sm text-cocoa-500">
+                  {order.is_test ? 'Commande de test : aucune facture.' : 'Aucune facture : elle est émise automatiquement une fois la commande payée et livrée (réglable dans Paramètres).'}
+                </p>
+              ) : (
+                <InvoiceList invoices={order.invoices ?? []} pathFor={(i) => `/admin/invoices/${i.id}/pdf`} showVat />
+              )}
+            </Card>
+          )}
         </div>
 
         <div className="space-y-6">
@@ -318,7 +348,8 @@ export function OrderDetailPage() {
       </div>
 
       <ReasonModal
-        open={pending === 'reject' || pending === 'cancel'}
+        key={pending ?? 'none'}
+        open={pending !== null && DESTRUCTIVE.includes(pending)}
         action={pending ?? ''}
         paid={order.paid_xof - order.refunded_xof > 0}
         loading={transition.isPending}
@@ -353,6 +384,7 @@ function Info({ label, value }: { label: string; value: ReactNode }) {
 
 function eventTitle(e: OrderEvent): string {
   if (e.type === 'status') return `${e.from_status ? (ORDER_STATUS_LABELS[e.from_status] ?? e.from_status) + ' → ' : ''}${ORDER_STATUS_LABELS[e.to_status ?? ''] ?? e.to_status}`
+  if (e.type === 'invoice') return `${e.metadata?.type === 'credit_note' ? 'Avoir' : 'Facture'} ${(e.metadata?.number as string | undefined) ?? ''} émis${e.metadata?.type === 'credit_note' ? '' : 'e'}`
   const name = (e.metadata?.event as string | undefined) ?? e.type
   const labels: Record<string, string> = {
     'payment.initiated': 'Session de paiement créée',
@@ -398,7 +430,7 @@ function ReasonModal({ open, action, paid, loading, onClose, onConfirm }: { open
     <Modal
       open={open}
       onOpenChange={(o) => !o && onClose()}
-      title={action === 'reject' ? 'Refuser la commande' : 'Annuler la commande'}
+      title={action === 'reject' ? 'Refuser la commande' : action === 'cancel_preparation' ? 'Annuler le démarrage de la préparation' : 'Annuler la commande'}
       description="Le motif est obligatoire et sera conservé dans l'historique."
       footer={
         <div className="flex justify-end gap-2">
@@ -418,7 +450,7 @@ function ReasonModal({ open, action, paid, loading, onClose, onConfirm }: { open
         </div>
       }
     >
-      {paid && (
+      {paid && action !== 'cancel_preparation' && (
         <Notice tone="warning" className="mb-4">
           Cette commande a été encaissée : une demande de remboursement sera ouverte automatiquement (validation par une seconde personne).
         </Notice>

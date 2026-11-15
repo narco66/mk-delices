@@ -104,7 +104,8 @@ export function newIdempotencyKey(prefix = 'mkd'): string {
 export function toQuery(params: Record<string, string | number | boolean | null | undefined>): string {
   const search = new URLSearchParams()
   Object.entries(params).forEach(([k, v]) => {
-    if (v !== undefined && v !== null && v !== '') search.set(k, String(v))
+    // Laravel (règle `boolean`) n'accepte que 1/0 : « true » en query string serait rejeté (422).
+    if (v !== undefined && v !== null && v !== '') search.set(k, typeof v === 'boolean' ? (v ? '1' : '0') : String(v))
   })
   const s = search.toString()
   return s ? `?${s}` : ''

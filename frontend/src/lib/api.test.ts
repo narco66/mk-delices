@@ -35,6 +35,6 @@ describe('client API', () => {
   })
 
   it('construit des paramètres de requête sans valeurs vides', () => {
-    expect(toQuery({ q: 'tiramisu', page: 2, empty: '', none: undefined, flag: true })).toBe('?q=tiramisu&page=2&flag=true')
+    expect(toQuery({ q: 'tiramisu', page: 2, empty: '', none: undefined, flag: true, off: false })).toBe('?q=tiramisu&page=2&flag=1&off=0')
   })
 })

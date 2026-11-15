@@ -1,0 +1,103 @@
+# MK Délices — plateforme e-commerce
+
+Boutique en ligne, commande WhatsApp, paiement, préparation et livraison pour **MK Délices**, pâtisserie artisanale à Dakar (spécialité : tiramisu).
+
+- `backend/` — API REST Laravel 13 + PostgreSQL
+- `frontend/` — SPA React 19 / TypeScript / Vite (boutique, back-office, espace livreur)
+- `docs/` — dossier de cadrage (01 à 13) et documentation de développement (`DEV-*.md`, `RAPPORT-FINAL-…`)
+
+> **État :** application prête pour une recette technique **avec données fictives**. Catalogue, prix, zones, numéro WhatsApp, prestataires de paiement et textes juridiques restent à fournir par MK Délices (`docs/DEV-DECISIONS-A-VALIDER.md`). Aucun paiement réel n'est possible tant qu'un contrat marchand n'est pas configuré.
+
+## Prérequis
+
+| Outil | Version testée |
+|---|---|
+| PHP | ≥ 8.3 (testé 8.5.12) avec `pdo_pgsql`, `gd`, `intl`, `mbstring`, `fileinfo`, `zip` |
+| Composer | 2.x |
+| PostgreSQL | 17 ou 18 (testé 18.4) |
+| Node.js / npm | 22.x / 10.x |
+
+## Installation (Windows / Laragon)
+
+```powershell
+# 1. Bases de données (adapter port et utilisateur à votre serveur PostgreSQL)
+psql -h 127.0.0.1 -p 5433 -U postgres -c "CREATE DATABASE mk_delices ENCODING 'UTF8' TEMPLATE template0;"
+psql -h 127.0.0.1 -p 5433 -U postgres -c "CREATE DATABASE mk_delices_test ENCODING 'UTF8' TEMPLATE template0;"
+
+# 2. Backend
+cd backend
+composer install
+copy .env.example .env          # renseigner DB_PORT, DB_PASSWORD ; en local : PAYMENTS_SIMULATOR_ENABLED=true + un secret
+php artisan key:generate
+php artisan migrate
+php artisan db:seed             # rôles, paramètres, contenus ; + jeu FICTIF en local/testing
+php artisan storage:link
+
+# 3. Frontend
+cd ..\frontend
+copy .env.example .env
+npm ci --include=dev            # --include=dev indispensable si NODE_ENV=production est défini sur le poste
+```
+
+## Démarrage
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\start-dev.ps1
+```
+ou manuellement : `php artisan serve` (8000), `php artisan queue:work` (indispensable pour confirmer les paiements), `npx vite` (5173).
+
+| URL | Usage |
+|---|---|
+| http://localhost:5173 | Boutique (utiliser `localhost`, valeur de `FRONTEND_URL`) |
+| http://localhost:5173/admin | Back-office |
+| http://localhost:5173/livreur | Espace livreur |
+
+## Comptes de démonstration (local/testing uniquement)
+
+Mot de passe commun : `Demo-MKD-2026`
+
+| Email | Rôle |
+|---|---|
+| admin@mk-delices.test | Administrateur |
+| commercial@mk-delices.test | Gestionnaire commercial |
+| preparateur@mk-delices.test | Préparateur |
+| livraison@mk-delices.test | Responsable des livraisons |
+| livreur1@mk-delices.test, livreur2@mk-delices.test | Livreurs partenaires |
+
+Le seeder de démonstration refuse de s'exécuter hors `local`/`testing`. En production : `php artisan mk:create-admin`.
+
+## Paiement de test
+
+Avec `PAYMENTS_SIMULATOR_ENABLED=true` (local uniquement), le moyen « Paiement simulé » apparaît au checkout : il redirige vers un écran prestataire fictif qui envoie un **webhook signé**, traité par la file d'attente puis vérifié auprès du « prestataire ». Aucun débit réel.
+
+## Tests
+
+```bash
+cd backend  && php artisan test            # 71 tests, PostgreSQL mk_delices_test
+cd backend  && vendor/bin/pint --test      # style PSR-12
+cd frontend && npm test                    # Vitest
+cd frontend && npm run typecheck && npm run lint && npm run build
+cd frontend && E2E_CHANNEL=msedge npx playwright test   # serveurs démarrés ; idéalement sur une base dédiée
+```
+Résultats détaillés : `docs/DEV-TESTS.md`.
+
+## Commandes utiles
+
+| Commande | Rôle |
+|---|---|
+| `php artisan mk:create-admin` | Créer un administrateur (mot de passe saisi, jamais par défaut) |
+| `php artisan mk:reconcile-payments` | Rapprocher les paiements en attente (planifié toutes les 5 min) |
+| `php artisan mk:purge-expired` | Purger paniers expirés et clés d'idempotence (planifié quotidiennement) |
+| `php artisan schedule:work` | Exécuter le planificateur en local |
+
+## Déploiement
+
+Non exécuté. Topologie, variables et procédure : `docs/DEV-ARCHITECTURE.md` §4 et `docs/11-DEPLOYMENT/`. La CI (`.github/workflows/ci.yml`) exécute lint, types, tests PostgreSQL, build et audits.
+
+## Limitations connues
+
+- Wave : adaptateur écrit d'après la documentation publique, **jamais exécuté contre un compte réel** ; Orange Money et carte : non implémentés (contrats/spécifications requis).
+- Notifications client par email uniquement (`MAIL_MAILER=log` en dev) ; SMS / WhatsApp automatisés non branchés.
+- Points de fidélité, suivi GPS et commandes événementielles : hors MVP.
+- Pages du back-office vérifiées par compilation et tests d'API, mais pas toutes parcourues en E2E.
+- Le dépôt n'est pas encore sous Git.

@@ -1,0 +1,710 @@
+openapi: 3.1.0
+info:
+  title: MK Délices API
+  version: 1.0.0
+  description: Contrat initial de cadrage, à compléter et valider avant implémentation.
+servers:
+- url: https://example.invalid/api/v1
+  description: URL fictive à remplacer
+tags:
+- name: Catalog
+- name: Checkout
+- name: Payment
+- name: Orders
+- name: Delivery
+- name: Admin
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: laravel_session
+    trackingToken:
+      type: apiKey
+      in: header
+      name: X-Tracking-Token
+  schemas:
+    Error:
+      type: object
+      required:
+      - error
+      - request_id
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+        request_id:
+          type: string
+    Order:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        reference:
+          type: string
+        status:
+          type: string
+        payment_status:
+          type: string
+        total_xof:
+          type: integer
+          minimum: 0
+        currency:
+          const: XOF
+paths:
+  /catalog/categories:
+    get:
+      summary: Liste catégories actives
+      operationId: GET__catalog_categories
+      tags:
+      - Catalog
+      responses:
+        '200':
+          description: Résultat 200
+          content:
+            application/json:
+              schema:
+                type: object
+      x-access-role: Public
+  /catalog/products:
+    get:
+      summary: Recherche/filtre produits disponibles
+      operationId: GET__catalog_products
+      tags:
+      - Catalog
+      responses:
+        '200':
+          description: Résultat 200
+          content:
+            application/json:
+              schema:
+                type: object
+      x-access-role: Public
+  /catalog/products/{slug}:
+    get:
+      summary: Fiche détaillée
+      operationId: GET__catalog_products__slug_
+      tags:
+      - Catalog
+      responses:
+        '200':
+          description: Résultat 200
+          content:
+            application/json:
+              schema:
+                type: object
+        '404':
+          description: Résultat 404
+          content:
+            application/json:
+              schema:
+                type: object
+      x-access-role: Public
+      parameters:
+      - name: slug
+        in: path
+        required: true
+        schema:
+          type: string
+  /cart:
+    post:
+      summary: Création panier
+      operationId: POST__cart
+      tags:
+      - Checkout
+      responses:
+        '201':
+          description: Résultat 201
+          content:
+            application/json:
+              schema:
+                type: object
+        '422':
+          description: Résultat 422
+          content:
+            application/json:
+              schema:
+                type: object
+      x-access-role: Invité/client
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+  /cart/items/{id}:
+    patch:
+      summary: Mettre à jour quantité
+      operationId: PATCH__cart_items__id_
+      tags:
+      - Checkout
+      responses:
+        '200':
+          description: Résultat 200
+          content:
+            application/json:
+              schema:
+                type: object
+        '409':
+          description: Résultat 409
+          content:
+            application/json:
+              schema:
+                type: object
+      x-access-role: Propriétaire
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+  /checkout/quote:
+    post:
+      summary: Devis, zone, créneau
+      operationId: POST__checkout_quote
+      tags:
+      - Checkout
+      responses:
+        '200':
+          description: Résultat 200
+          content:
+            application/json:
+              schema:
+                type: object
+        '422':
+          description: Résultat 422
+          content:
+            application/json:
+              schema:
+                type: object
+      x-access-role: Invité/client
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+  /checkout/orders:
+    post:
+      summary: Confirmer commande idempotente
+      operationId: POST__checkout_orders
+      tags:
+      - Orders
+      responses:
+        '201':
+          description: Résultat 201
+          content:
+            application/json:
+              schema:
+                type: object
+        '409':
+          description: Résultat 409
+          content:
+            application/json:
+              schema:
+                type: object
+        '422':
+          description: Résultat 422
+          content:
+            application/json:
+              schema:
+                type: object
+      x-access-role: Invité/client
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+  /orders/{ref}/payments:
+    post:
+      summary: Initier PSP
+      operationId: POST__orders__ref__payments
+      tags:
+      - Payment
+      responses:
+        '201':
+          description: Résultat 201
+          content:
+            application/json:
+              schema:
+                type: object
+        '409':
+          description: Résultat 409
+          content:
+            application/json:
+              schema:
+                type: object
+      x-access-role: Propriétaire
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      parameters:
+      - name: ref
+        in: path
+        required: true
+        schema:
+          type: string
+  /orders/{ref}/status:
+    get:
+      summary: Suivi public restreint
+      operationId: GET__orders__ref__status
+      tags:
+      - Orders
+      responses:
+        '200':
+          description: Résultat 200
+          content:
+            application/json:
+              schema:
+                type: object
+        '403':
+          description: Résultat 403
+          content:
+            application/json:
+              schema:
+                type: object
+      x-access-role: Jeton secret
+      parameters:
+      - name: ref
+        in: path
+        required: true
+        schema:
+          type: string
+  /orders/{ref}/whatsapp-draft:
+    post:
+      summary: Préparer message WhatsApp
+      operationId: POST__orders__ref__whatsapp_draft
+      tags:
+      - Orders
+      responses:
+        '201':
+          description: Résultat 201
+          content:
+            application/json:
+              schema:
+                type: object
+      x-access-role: Propriétaire
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      parameters:
+      - name: ref
+        in: path
+        required: true
+        schema:
+          type: string
+  /webhooks/payments/{provider}:
+    post:
+      summary: Recevoir événement vérifié
+      operationId: POST__webhooks_payments__provider_
+      tags:
+      - Payment
+      responses:
+        '200':
+          description: Résultat 200
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          description: Résultat 400
+          content:
+            application/json:
+              schema:
+                type: object
+        '401':
+          description: Résultat 401
+          content:
+            application/json:
+              schema:
+                type: object
+      x-access-role: Prestataire signé
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      parameters:
+      - name: provider
+        in: path
+        required: true
+        schema:
+          type: string
+  /auth/login:
+    post:
+      summary: Créer session
+      operationId: POST__auth_login
+      tags:
+      - Checkout
+      responses:
+        '200':
+          description: Résultat 200
+          content:
+            application/json:
+              schema:
+                type: object
+        '401':
+          description: Résultat 401
+          content:
+            application/json:
+              schema:
+                type: object
+        '429':
+          description: Résultat 429
+          content:
+            application/json:
+              schema:
+                type: object
+      x-access-role: Staff/livreur
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+  /auth/logout:
+    post:
+      summary: Fermer session
+      operationId: POST__auth_logout
+      tags:
+      - Checkout
+      responses:
+        '204':
+          description: Résultat 204
+          content:
+            application/json:
+              schema:
+                type: object
+      x-access-role: Authentifié
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+  /admin/orders:
+    get:
+      summary: Liste paginée
+      operationId: GET__admin_orders
+      tags:
+      - Admin
+      responses:
+        '200':
+          description: Résultat 200
+          content:
+            application/json:
+              schema:
+                type: object
+        '403':
+          description: Résultat 403
+          content:
+            application/json:
+              schema:
+                type: object
+      x-access-role: Commercial/admin
+  /admin/orders/{id}:
+    get:
+      summary: Détail et journal
+      operationId: GET__admin_orders__id_
+      tags:
+      - Admin
+      responses:
+        '200':
+          description: Résultat 200
+          content:
+            application/json:
+              schema:
+                type: object
+        '403':
+          description: Résultat 403
+          content:
+            application/json:
+              schema:
+                type: object
+        '404':
+          description: Résultat 404
+          content:
+            application/json:
+              schema:
+                type: object
+      x-access-role: Commercial/admin
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+  /admin/orders/{id}/transitions:
+    post:
+      summary: Transition validée
+      operationId: POST__admin_orders__id__transitions
+      tags:
+      - Admin
+      responses:
+        '200':
+          description: Résultat 200
+          content:
+            application/json:
+              schema:
+                type: object
+        '409':
+          description: Résultat 409
+          content:
+            application/json:
+              schema:
+                type: object
+        '422':
+          description: Résultat 422
+          content:
+            application/json:
+              schema:
+                type: object
+      x-access-role: Acteur autorisé
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+  /admin/products:
+    get:
+      summary: Lister y compris inactifs
+      operationId: GET__admin_products
+      tags:
+      - Admin
+      responses:
+        '200':
+          description: Résultat 200
+          content:
+            application/json:
+              schema:
+                type: object
+      x-access-role: Commercial/admin
+    post:
+      summary: Créer produit
+      operationId: POST__admin_products
+      tags:
+      - Admin
+      responses:
+        '201':
+          description: Résultat 201
+          content:
+            application/json:
+              schema:
+                type: object
+        '422':
+          description: Résultat 422
+          content:
+            application/json:
+              schema:
+                type: object
+      x-access-role: Commercial/admin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+  /admin/products/{id}:
+    patch:
+      summary: Modifier produit
+      operationId: PATCH__admin_products__id_
+      tags:
+      - Admin
+      responses:
+        '200':
+          description: Résultat 200
+          content:
+            application/json:
+              schema:
+                type: object
+        '409':
+          description: Résultat 409
+          content:
+            application/json:
+              schema:
+                type: object
+      x-access-role: Commercial/admin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+  /admin/delivery/zones:
+    get:
+      summary: Zones et frais
+      operationId: GET__admin_delivery_zones
+      tags:
+      - Admin
+      responses:
+        '200':
+          description: Résultat 200
+          content:
+            application/json:
+              schema:
+                type: object
+      x-access-role: Responsable/admin
+  /admin/delivery/assignments:
+    post:
+      summary: Affecter mission
+      operationId: POST__admin_delivery_assignments
+      tags:
+      - Admin
+      responses:
+        '201':
+          description: Résultat 201
+          content:
+            application/json:
+              schema:
+                type: object
+        '409':
+          description: Résultat 409
+          content:
+            application/json:
+              schema:
+                type: object
+      x-access-role: Responsable/admin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+  /courier/missions:
+    get:
+      summary: Mes missions uniquement
+      operationId: GET__courier_missions
+      tags:
+      - Delivery
+      responses:
+        '200':
+          description: Résultat 200
+          content:
+            application/json:
+              schema:
+                type: object
+        '403':
+          description: Résultat 403
+          content:
+            application/json:
+              schema:
+                type: object
+      x-access-role: Livreur
+  /courier/missions/{id}/actions:
+    post:
+      summary: Accepter, enlever, livrer, échec
+      operationId: POST__courier_missions__id__actions
+      tags:
+      - Delivery
+      responses:
+        '200':
+          description: Résultat 200
+          content:
+            application/json:
+              schema:
+                type: object
+        '409':
+          description: Résultat 409
+          content:
+            application/json:
+              schema:
+                type: object
+      x-access-role: Livreur affecté
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+  /admin/stats:
+    get:
+      summary: Agrégats filtrés
+      operationId: GET__admin_stats
+      tags:
+      - Admin
+      responses:
+        '200':
+          description: Résultat 200
+          content:
+            application/json:
+              schema:
+                type: object
+        '403':
+          description: Résultat 403
+          content:
+            application/json:
+              schema:
+                type: object
+      x-access-role: Commercial/admin
+  /admin/payments:
+    get:
+      summary: Rapprochement paiement
+      operationId: GET__admin_payments
+      tags:
+      - Admin
+      responses:
+        '200':
+          description: Résultat 200
+          content:
+            application/json:
+              schema:
+                type: object
+        '403':
+          description: Résultat 403
+          content:
+            application/json:
+              schema:
+                type: object
+      x-access-role: Commercial/admin

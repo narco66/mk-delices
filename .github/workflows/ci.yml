@@ -1,0 +1,70 @@
+# Intégration continue MK Délices (TRD §9, DEPLOYMENT §3) :
+# lint, types, tests PHP sur PostgreSQL réel, tests JS, build, audit des dépendances.
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: mk_delices_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DB_HOST: 127.0.0.1
+      DB_PORT: 5432
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: pdo_pgsql, pgsql, gd, intl, mbstring, fileinfo, zip
+          coverage: none
+      - run: composer validate --strict
+      - run: composer install --no-interaction --prefer-dist --no-progress
+      - run: cp .env.example .env && php artisan key:generate
+      - name: Style PSR-12 (Pint)
+        run: vendor/bin/pint --test
+      - name: Tests (PHPUnit sur PostgreSQL)
+        run: php artisan test
+      - name: Audit des dépendances
+        run: composer audit
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci --include=dev
+      - run: npm run lint -- --quiet
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: Audit des dépendances
+        run: npm audit --omit=dev --audit-level=high

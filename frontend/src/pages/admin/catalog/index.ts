@@ -1,0 +1,6 @@
+export { CategoriesPage } from './CategoriesPage'
+export { ContentAdminPage } from './ContentAdminPage'
+export { ProductEditPage } from './ProductEditPage'
+export { ProductsPage } from './ProductsPage'
+export { PromotionsAdminPage } from './PromotionsAdminPage'
+export { ReviewsPage } from './ReviewsPage'

@@ -1,0 +1,14 @@
+﻿Exigence;Module;Priorité;Critère;Test
+CAT-001;Catalogue et vitrines;M;"La fiche affiche un prix et les allergènes avant ajout ; un produit désactivé ne peut pas être commandé";T-001
+CART-002;Panier et devis;M;"Une manipulation du prix client ne change jamais le montant final ; les quantités sont validées";T-002
+ORDER-003;Commande invitée;M;"Commande créée une seule fois avec idempotence ; récapitulatif consultable par lien signé";T-003
+WA-004;Passerelle WhatsApp;M;Retour de WhatsApp ne valide ni paiement ni commande sans confirmation côté serveur;T-004
+PAY-005;Encaissement;M;"Webhook authentifié et idempotent ; commande payée uniquement après confirmation serveur du prestataire";T-005
+PREP-006;Préparation;M;"Transition invalide refusée ; commande non autorisée non préparée sans exception explicite";T-006
+DEL-007;Livraisons partenaires;M;"Livreur ne voit que ses missions ; preuve horodatée ; montant dû calculé séparément";T-007
+CMS-008;Site et contenus;M;"Contenus modifiables sans déploiement ; brouillon / publication";T-008
+SEC-009;Accès et audit;M;Rôle livreur interdit d accéder aux commandes non affectées et au tableau financier;T-009
+STATS-010;Pilotage commercial;S;Indicateurs calculés sur ventes payées non remboursées selon période choisie;T-010
+LOY-011;Fidélisation;S;"Une remise n est pas cumulée sans règle ; consentement marketing distinct";T-011
+GPS-012;Traçage GPS continu;C;"Inactif par défaut ; consentement et politique de rétention validés";T-012
+EVT-013;Commandes événementielles;C;Devis et échéance validés manuellement;T-013

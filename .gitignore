@@ -1,0 +1,22 @@
+# Secrets et environnements locaux
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# Dépendances et artefacts
+node_modules/
+vendor/
+frontend/dist/
+frontend/playwright-report/
+frontend/test-results/
+backend/storage/framework/testing-spa-index.html
+
+# Éditeurs / OS
+.idea/
+.vscode/
+*.log
+Thumbs.db
+.DS_Store

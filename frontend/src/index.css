@@ -1,0 +1,137 @@
+@import 'tailwindcss';
+
+/*
+ * Design tokens MK Délices (docs/04-UI-UX §2) — palette de départ indicative,
+ * modifiable après validation de l'identité de marque (DEV-DECISIONS D-BRAND-01).
+ */
+@theme {
+  --color-cream-50: #fffcf8;
+  --color-cream-100: #fff9f2; /* color.background */
+  --color-cream-200: #f8ecdc;
+  --color-cream-300: #f0dcc3;
+  --color-cocoa-50: #f6efec;
+  --color-cocoa-100: #e8d8d2;
+  --color-cocoa-300: #b08b80;
+  --color-cocoa-500: #7a4d40;
+  --color-cocoa-700: #5b342b; /* color.primary */
+  --color-cocoa-800: #46271f;
+  --color-cocoa-900: #2a211f; /* color.text */
+  --color-caramel-300: #e4bf8f;
+  --color-caramel-500: #c08a4d;
+  --color-caramel-600: #a8733a;
+  --color-raspberry-50: #fcf0f3;
+  --color-raspberry-100: #f6dbe2;
+  --color-raspberry-500: #b74264; /* color.accent */
+  --color-raspberry-600: #9c3553;
+  --color-blush-100: #f8e3e4;
+  --color-success-600: #22724f;
+  --color-success-50: #e8f4ee;
+  --color-error-600: #b3261e;
+  --color-error-50: #fcecea;
+  --color-warning-600: #8a5a00;
+  --color-warning-50: #fdf4e1;
+
+  --font-display: 'Fraunces', ui-serif, Georgia, serif;
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+
+  --radius-card: 16px;
+  --radius-control: 10px;
+
+  --shadow-soft: 0 1px 2px rgb(42 33 31 / 0.04), 0 8px 24px -12px rgb(91 52 43 / 0.18);
+  --shadow-lift: 0 2px 4px rgb(42 33 31 / 0.06), 0 22px 40px -18px rgb(91 52 43 / 0.32);
+
+  --animate-fade-up: fade-up 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  --animate-shimmer: shimmer 1.6s linear infinite;
+
+  @keyframes fade-up {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes shimmer {
+    from {
+      background-position: -200% 0;
+    }
+    to {
+      background-position: 200% 0;
+    }
+  }
+}
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-cream-100 font-sans text-cocoa-900 antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  h1,
+  h2,
+  h3,
+  .font-display {
+    font-family: var(--font-display);
+    font-optical-sizing: auto;
+    letter-spacing: -0.01em;
+  }
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-raspberry-500;
+  }
+  ::selection {
+    @apply bg-raspberry-100 text-cocoa-900;
+  }
+}
+
+@layer components {
+  .container-page {
+    @apply mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8;
+  }
+  .skeleton {
+    background: linear-gradient(90deg, var(--color-cream-200) 25%, var(--color-cream-50) 50%, var(--color-cream-200) 75%);
+    background-size: 200% 100%;
+    @apply animate-shimmer rounded-[var(--radius-control)];
+  }
+  .prose-mk {
+    @apply leading-relaxed text-cocoa-800;
+  }
+  .prose-mk h2 {
+    @apply mt-8 mb-3 text-2xl font-semibold text-cocoa-900;
+  }
+  .prose-mk h3 {
+    @apply mt-6 mb-2 text-xl font-semibold text-cocoa-900;
+  }
+  .prose-mk p,
+  .prose-mk ul,
+  .prose-mk ol {
+    @apply mb-4;
+  }
+  .prose-mk ul {
+    @apply list-disc pl-6;
+  }
+  .prose-mk ol {
+    @apply list-decimal pl-6;
+  }
+  .prose-mk blockquote {
+    @apply mb-6 rounded-[var(--radius-control)] border-l-4 border-caramel-500 bg-warning-50 px-4 py-3 text-sm text-warning-600;
+  }
+  .prose-mk a {
+    @apply font-medium text-raspberry-600 underline underline-offset-2;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

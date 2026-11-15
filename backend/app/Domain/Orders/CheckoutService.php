@@ -1,0 +1,355 @@
+<?php
+
+namespace App\Domain\Orders;
+
+use App\Domain\Cart\Quote;
+use App\Domain\Cart\QuoteService;
+use App\Domain\Payments\GatewayRegistry;
+use App\Domain\Shared\AuditLogger;
+use App\Domain\Shared\DomainException;
+use App\Domain\Shared\Phone;
+use App\Domain\Shared\Settings;
+use App\Models\Cart;
+use App\Models\Customer;
+use App\Models\DeliveryZone;
+use App\Models\Order;
+use App\Models\ProductVariant;
+use App\Models\Promotion;
+use App\Models\User;
+use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\DB;
+
+/**
+ * Création transactionnelle des commandes (web et brouillons WhatsApp).
+ * Montants, zone, créneau et disponibilité sont toujours recalculés côté serveur.
+ */
+class CheckoutService
+{
+    public function __construct(
+        private readonly QuoteService $quotes,
+        private readonly SlotService $slots,
+        private readonly StockService $stock,
+        private readonly OrderTracking $tracking,
+        private readonly OrderJournal $journal,
+        private readonly OrderStateMachine $stateMachine,
+        private readonly OrderNotifier $notifier,
+        private readonly GatewayRegistry $gateways,
+        private readonly AuditLogger $audit,
+        private readonly Settings $settings,
+    ) {}
+
+    /**
+     * Confirme le panier en commande « pending_confirmation » (ou convertit atomiquement le brouillon WhatsApp du même panier).
+     *
+     * @return array{order: Order, tracking_token: string}
+     */
+    public function placeOrder(Cart $cart, array $data, ?User $user): array
+    {
+        return DB::transaction(function () use ($cart, $data, $user) {
+            /** @var Cart $cart */
+            $cart = Cart::query()->lockForUpdate()->findOrFail($cart->id);
+            $existing = $cart->converted_order_id ? Order::query()->lockForUpdate()->find($cart->converted_order_id) : null;
+            if ($existing && $existing->status !== OrderStatus::Draft) {
+                throw DomainException::conflict('cart_converted', 'Ce panier a déjà donné lieu à une commande.', ['reference' => $existing->reference]);
+            }
+
+            $fulfillment = $data['fulfillment_type'] ?? 'delivery';
+            $quote = $this->quotes->quote($cart, $data['delivery']['zone_id'] ?? null, $fulfillment, $data['promotion_code'] ?? null, lock: true);
+            $quote->assertValid();
+
+            $method = $data['payment_method'] ?? null;
+            $available = array_column($this->gateways->availableMethods(), 'code');
+            if ($method !== null && ! in_array($method, $available, true)) {
+                throw DomainException::unprocessable('payment_method_unavailable', 'Ce moyen de paiement n\'est pas disponible.');
+            }
+            if ($method === null && $available !== []) {
+                throw DomainException::unprocessable('payment_method_required', 'Veuillez choisir un moyen de paiement.');
+            }
+
+            $slot = $this->slots->reserve((string) $data['slot_start_at'], $quote->leadMinutes, $existing?->id);
+            $customer = $this->resolveCustomer($data['customer'], $user, (bool) ($data['marketing_consent'] ?? false));
+
+            $order = $existing ?? new Order(['reference' => OrderReference::generate(), 'channel' => 'web']);
+            $from = $existing?->status->value;
+            $order->fill([
+                'customer_id' => $customer->id,
+                'cart_id' => $cart->id,
+                'status' => OrderStatus::PendingConfirmation,
+                'payment_status' => OrderPaymentStatus::Unpaid,
+                'payment_method' => $method,
+                'fulfillment_type' => $fulfillment,
+                'zone_id' => $quote->zone?->id,
+                'customer_snapshot' => $this->customerSnapshot($data['customer']),
+                'address_snapshot' => $fulfillment === 'delivery' ? $this->addressSnapshot($data['delivery'], $quote) : null,
+                'slot_start_at' => $slot['start'],
+                'slot_end_at' => $slot['end'],
+                'customer_notes' => $data['notes'] ?? null,
+                'terms_accepted_at' => now(),
+                'confirmed_at' => now(),
+            ]);
+            $this->applyQuote($order, $quote);
+            $order->version = ($order->version ?? 0) + 1;
+            $token = $this->tracking->issue($order);
+            $order->save();
+
+            $this->snapshotItems($order, $quote);
+            $this->stock->reserveForOrder($order);
+            if ($quote->promotion) {
+                Promotion::query()->whereKey($quote->promotion->id)->increment('used_count');
+            }
+            $cart->update(['converted_order_id' => $order->id, 'customer_id' => $customer->id]);
+
+            $this->journal->record($order, 'status', $user, null, ['action' => 'checkout', 'channel' => $order->channel], $from, OrderStatus::PendingConfirmation->value);
+            DB::afterCommit(fn () => $this->notifier->orderStatusChanged($order->fresh(), OrderStatus::PendingConfirmation));
+
+            return ['order' => $order->fresh('items'), 'tracking_token' => $token];
+        });
+    }
+
+    /**
+     * Crée ou met à jour le brouillon WhatsApp du panier. Le brouillon ne réserve ni stock ni créneau
+     * et ne vaut ni confirmation ni paiement (BR-007).
+     *
+     * @return array{order: Order, tracking_token: ?string, created: bool}
+     */
+    public function saveWhatsAppDraft(Cart $cart, array $data, ?User $user): array
+    {
+        return DB::transaction(function () use ($cart, $data, $user) {
+            /** @var Cart $cart */
+            $cart = Cart::query()->lockForUpdate()->findOrFail($cart->id);
+            $existing = $cart->converted_order_id ? Order::query()->lockForUpdate()->find($cart->converted_order_id) : null;
+            if ($existing && $existing->status !== OrderStatus::Draft) {
+                // Anti-doublon : le panier est déjà une commande, on renvoie la même référence.
+                return ['order' => $existing->load('items'), 'tracking_token' => null, 'created' => false];
+            }
+            $quote = $this->quotes->quote($cart, $data['zone_id'] ?? null, 'delivery', $data['promotion_code'] ?? null);
+            $blocking = array_filter($quote->issues, fn ($i) => in_array($i['code'], ['variant_unavailable', 'insufficient_stock'], true));
+            if ($blocking !== []) {
+                $quote->assertValid(false);
+            }
+
+            $order = $existing ?? new Order(['reference' => OrderReference::generate(), 'channel' => 'whatsapp', 'status' => OrderStatus::Draft, 'payment_status' => OrderPaymentStatus::Unpaid]);
+            $order->fill([
+                'cart_id' => $cart->id,
+                'fulfillment_type' => 'delivery',
+                'zone_id' => $quote->zone?->id,
+                'customer_snapshot' => array_filter(['first_name' => $data['first_name'] ?? null]),
+            ]);
+            $this->applyQuote($order, $quote);
+            $order->version = ($order->version ?? 0) + 1;
+            $token = $existing ? null : $this->tracking->issue($order);
+            $order->save();
+            $this->snapshotItems($order, $quote);
+            $cart->update(['converted_order_id' => $order->id]);
+
+            if (! $existing) {
+                $this->journal->record($order, 'status', $user, null, ['action' => 'whatsapp_draft'], null, OrderStatus::Draft->value);
+            }
+
+            return ['order' => $order->fresh('items'), 'tracking_token' => $token, 'created' => ! $existing];
+        });
+    }
+
+    /** Confirmation commerciale d'un brouillon : re-tarification, créneau, stock, puis transition draft → pending_confirmation. */
+    public function confirmDraft(Order $order, User $actor, ?int $expectedVersion = null): Order
+    {
+        return DB::transaction(function () use ($order, $actor, $expectedVersion) {
+            /** @var Order $locked */
+            $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
+            if ($locked->status !== OrderStatus::Draft) {
+                throw DomainException::conflict('invalid_transition', 'Seul un brouillon peut être confirmé.');
+            }
+            if (empty($locked->customer_snapshot['phone']) || empty($locked->customer_snapshot['first_name'])) {
+                throw DomainException::unprocessable('details_incomplete', 'Renseignez le prénom et le téléphone du destinataire avant confirmation.');
+            }
+            if ($locked->fulfillment_type === 'delivery' && ($locked->zone_id === null || empty($locked->address_snapshot['district']))) {
+                throw DomainException::unprocessable('details_incomplete', 'Renseignez la zone et le quartier de livraison avant confirmation.');
+            }
+            if ($locked->slot_start_at === null) {
+                throw DomainException::unprocessable('details_incomplete', 'Choisissez un créneau avant confirmation.');
+            }
+            $this->repriceFromCatalog($locked);
+            $lead = 0; // la confirmation commerciale peut retenir tout créneau futur ouvert et non saturé
+            $this->slots->reserve($locked->slot_start_at->toIso8601ZuluString(), $lead, $locked->id);
+            if ($locked->customer_id === null) {
+                $customer = Customer::query()->create([
+                    'first_name' => $locked->customer_snapshot['first_name'],
+                    'last_name' => $locked->customer_snapshot['last_name'] ?? null,
+                    'phone' => $locked->customer_snapshot['phone'],
+                ]);
+                $locked->customer_id = $customer->id;
+                $locked->save();
+            }
+
+            return $this->stateMachine->apply($locked, 'submit', $actor, null, $expectedVersion);
+        });
+    }
+
+    /**
+     * Mise à jour des coordonnées/créneau par le back-office, interdite après passage en préparation (PRD §7).
+     */
+    public function updateDetails(Order $order, array $data, User $actor): Order
+    {
+        return DB::transaction(function () use ($order, $data, $actor) {
+            /** @var Order $locked */
+            $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
+            if ($locked->details_locked || ! in_array($locked->status, [OrderStatus::Draft, OrderStatus::PendingConfirmation, OrderStatus::Accepted], true)) {
+                throw DomainException::conflict('details_locked', 'Les informations de livraison sont figées à ce stade de la commande.');
+            }
+            if (isset($data['expected_version']) && (int) $data['expected_version'] !== $locked->version) {
+                throw DomainException::conflict('version_conflict', 'La commande a été modifiée entre-temps.');
+            }
+            $before = $locked->only(['customer_snapshot', 'address_snapshot', 'zone_id', 'slot_start_at', 'delivery_fee_xof', 'total_xof']);
+
+            if (isset($data['customer'])) {
+                $snapshot = array_merge($locked->customer_snapshot ?? [], $this->customerSnapshot($data['customer']));
+                $locked->customer_snapshot = $snapshot;
+            }
+            if (array_key_exists('delivery', $data) && $data['delivery'] !== null) {
+                $zone = DeliveryZone::query()->where('active', true)->find($data['delivery']['zone_id'] ?? null);
+                if (! $zone) {
+                    throw DomainException::unprocessable('zone_unavailable', 'Zone de livraison inactive ou inconnue.');
+                }
+                $newFee = $zone->delivery_fee_xof;
+                if ($newFee !== $locked->delivery_fee_xof && $locked->paid_xof > 0) {
+                    throw DomainException::conflict('amount_change_after_payment', 'Les frais ne peuvent pas changer après encaissement. Annulez et recréez la commande si nécessaire.');
+                }
+                $locked->zone_id = $zone->id;
+                $locked->address_snapshot = [
+                    'zone_name' => $zone->name,
+                    'district' => $data['delivery']['district'],
+                    'street' => $data['delivery']['street'] ?? null,
+                    'landmark' => $data['delivery']['landmark'] ?? null,
+                    'lat' => $data['delivery']['lat'] ?? null,
+                    'lng' => $data['delivery']['lng'] ?? null,
+                ];
+                $locked->delivery_fee_xof = $newFee;
+                $locked->total_xof = $locked->subtotal_xof - $locked->discount_xof + $newFee;
+            }
+            if (! empty($data['slot_start_at'])) {
+                $slot = $locked->status === OrderStatus::Draft
+                    ? ['start' => CarbonImmutable::parse($data['slot_start_at']), 'end' => CarbonImmutable::parse($data['slot_start_at'])->addMinutes((int) $this->settings->get('ordering.slot_duration_minutes', 120))]
+                    : $this->slots->reserve($data['slot_start_at'], 0, $locked->id);
+                $locked->slot_start_at = $slot['start'];
+                $locked->slot_end_at = $slot['end'];
+            }
+            if (array_key_exists('internal_notes', $data)) {
+                $locked->internal_notes = $data['internal_notes'];
+            }
+            $locked->version++;
+            $locked->save();
+            $this->journal->record($locked, 'details', $actor, $data['reason'] ?? null, ['fields' => array_keys($data)]);
+            $this->audit->log('order.details_updated', $locked, $before, $locked->only(array_keys($before)));
+
+            return $locked;
+        });
+    }
+
+    private function repriceFromCatalog(Order $order): void
+    {
+        $subtotal = 0;
+        foreach ($order->items()->get() as $item) {
+            $variant = ProductVariant::query()->with('product.category')->lockForUpdate()->find($item->variant_id);
+            if (! $variant || ! $variant->isSellable()) {
+                throw DomainException::conflict('variant_unavailable', "« {$item->product_name_snapshot} – {$item->variant_label_snapshot} » n'est plus disponible.");
+            }
+            $item->update([
+                'unit_price_xof' => $variant->price_xof,
+                'line_total_xof' => $variant->price_xof * $item->qty,
+                'allergens_snapshot' => $variant->product->allergens ?? [],
+            ]);
+            $subtotal += $variant->price_xof * $item->qty;
+        }
+        $order->subtotal_xof = $subtotal;
+        $order->discount_xof = min($order->discount_xof, $subtotal);
+        if ($order->zone_id) {
+            $order->delivery_fee_xof = (int) DeliveryZone::query()->whereKey($order->zone_id)->value('delivery_fee_xof');
+        }
+        $order->total_xof = $order->subtotal_xof - $order->discount_xof + $order->delivery_fee_xof;
+        $order->save();
+    }
+
+    private function applyQuote(Order $order, Quote $quote): void
+    {
+        $order->subtotal_xof = $quote->subtotal;
+        $order->discount_xof = $quote->discount;
+        $order->delivery_fee_xof = $quote->deliveryFee;
+        $order->total_xof = $quote->total();
+        $order->promotion_id = $quote->promotion?->id;
+        $order->promotion_code = $quote->promotion?->code;
+        $order->currency = 'XOF';
+    }
+
+    private function snapshotItems(Order $order, Quote $quote): void
+    {
+        $order->items()->delete();
+        foreach ($quote->lines as $line) {
+            $variant = $line['variant'];
+            $order->items()->create([
+                'variant_id' => $variant->id,
+                'product_id' => $variant->product_id,
+                'product_name_snapshot' => $variant->product->name,
+                'variant_label_snapshot' => $variant->label,
+                'sku_snapshot' => $variant->sku,
+                'unit_price_xof' => $line['unit_price_xof'],
+                'qty' => $line['quantity'],
+                'line_total_xof' => $line['line_total_xof'],
+                'allergens_snapshot' => $variant->product->allergens ?? [],
+                'storage_snapshot' => $variant->product->storage_instructions,
+                'prep_minutes_snapshot' => $variant->prep_minutes,
+            ]);
+        }
+    }
+
+    private function resolveCustomer(array $input, ?User $user, bool $marketingConsent): Customer
+    {
+        $phone = Phone::normalizeSenegal($input['phone'] ?? null);
+        if ($phone === null) {
+            throw DomainException::unprocessable('invalid_phone', 'Numéro de téléphone sénégalais invalide.');
+        }
+        $attributes = [
+            'first_name' => $input['first_name'],
+            'last_name' => $input['last_name'] ?? null,
+            'phone' => $phone,
+            'email' => $input['email'] ?? null,
+        ];
+        if ($user && $user->customer) {
+            $customer = $user->customer;
+        } else {
+            // Pas de fusion de clients invités par téléphone : évite toute fuite d'historique entre personnes.
+            $customer = Customer::query()->create($attributes + ['user_id' => $user?->id]);
+        }
+        if ($marketingConsent && $customer->marketing_consent_at === null) {
+            $customer->update(['marketing_consent_at' => now()]);
+        }
+
+        return $customer;
+    }
+
+    private function customerSnapshot(array $input): array
+    {
+        $phone = isset($input['phone']) ? Phone::normalizeSenegal($input['phone']) : null;
+        if (isset($input['phone']) && $phone === null) {
+            throw DomainException::unprocessable('invalid_phone', 'Numéro de téléphone sénégalais invalide.');
+        }
+
+        return array_filter([
+            'first_name' => $input['first_name'] ?? null,
+            'last_name' => $input['last_name'] ?? null,
+            'phone' => $phone,
+            'email' => $input['email'] ?? null,
+        ], fn ($v) => $v !== null && $v !== '');
+    }
+
+    private function addressSnapshot(array $delivery, Quote $quote): array
+    {
+        return [
+            'zone_name' => $quote->zone?->name,
+            'district' => $delivery['district'],
+            'street' => $delivery['street'] ?? null,
+            'landmark' => $delivery['landmark'] ?? null,
+            'lat' => $delivery['lat'] ?? null,
+            'lng' => $delivery['lng'] ?? null,
+        ];
+    }
+}

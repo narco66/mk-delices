@@ -1,0 +1,26 @@
+import { useQuery } from '@tanstack/react-query'
+import { api } from '@/lib/api'
+import type { Mission } from '@/types/api'
+
+export interface CourierOverview {
+  partner: { display_name: string; available: boolean }
+  active: Mission[]
+  history: Mission[]
+  proof_types: string[]
+  incident_reasons: string[]
+  amount_due_xof: number
+}
+
+export function useCourierOverview() {
+  return useQuery({
+    queryKey: ['courier', 'missions'],
+    queryFn: async () => (await api.get<{ data: CourierOverview }>('/courier/missions')).data,
+    refetchInterval: 60_000,
+  })
+}
+
+export function mapsUrl(m: Pick<Mission, 'lat' | 'lng' | 'district' | 'landmark' | 'street' | 'zone_name'>): string | null {
+  if (m.lat !== null && m.lng !== null) return `https://www.google.com/maps/search/?api=1&query=${m.lat},${m.lng}`
+  const parts = [m.street, m.landmark, m.district, m.zone_name?.replace(/\s*\(démo\)\s*/i, ''), 'Dakar'].filter(Boolean)
+  return m.street || m.landmark ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(parts.join(', '))}` : null
+}

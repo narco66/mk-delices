@@ -1,0 +1,224 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Plus, Trash2 } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { toast } from 'sonner'
+import { Button } from '@/components/ui/Button'
+import { Badge, Card, PageHeader } from '@/components/ui/Display'
+import { ErrorState, Notice, Skeleton } from '@/components/ui/Feedback'
+import { Field, Input, Textarea } from '@/components/ui/Form'
+import { api } from '@/lib/api'
+import { PAYMENT_LABELS } from '@/lib/format'
+import { applyServerErrors, TagInput, Toggle } from '../catalog/shared'
+
+interface SettingItem {
+  key: string
+  group: string
+  value: unknown
+  is_public: boolean
+  requires_validation: boolean
+  description: string | null
+}
+
+type Hours = Record<string, [string, string][]>
+
+const GROUP_LABELS: Record<string, string> = {
+  business: 'Entreprise et contact',
+  ordering: 'Commandes et créneaux',
+  payments: 'Paiements',
+  policies: 'Politiques',
+  delivery: 'Livraison',
+  quality: 'Qualité et chaîne du froid',
+}
+const DAYS: [string, string][] = [
+  ['mon', 'Lundi'],
+  ['tue', 'Mardi'],
+  ['wed', 'Mercredi'],
+  ['thu', 'Jeudi'],
+  ['fri', 'Vendredi'],
+  ['sat', 'Samedi'],
+  ['sun', 'Dimanche'],
+]
+const INTEGER_KEYS = [
+  'ordering.slot_duration_minutes',
+  'ordering.slot_capacity',
+  'ordering.min_lead_minutes',
+  'ordering.max_days_ahead',
+  'ordering.cart_ttl_hours',
+  'ordering.tracking_token_ttl_days',
+  'ordering.max_qty_per_line',
+  'quality.cold_chain_max_minutes',
+]
+const LIST_KEYS = ['ordering.closed_dates', 'delivery.proof_types', 'delivery.incident_reasons']
+const LONG_TEXT_KEYS = ['policies.cancellation']
+
+export function SettingsPage() {
+  const queryClient = useQueryClient()
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['admin', 'settings'],
+    queryFn: async () => (await api.get<{ data: SettingItem[] }>('/admin/settings')).data,
+  })
+  // Valeurs affichées = valeurs serveur + modifications locales non enregistrées.
+  const [edits, setEdits] = useState<Record<string, unknown>>({})
+  const values = useMemo(() => ({ ...Object.fromEntries((data ?? []).map((s) => [s.key, s.value])), ...edits }), [data, edits])
+  const dirty = useMemo(() => new Set(Object.keys(edits)), [edits])
+
+  const groups = useMemo(() => {
+    const map = new Map<string, SettingItem[]>()
+    data?.forEach((s) => map.set(s.group, [...(map.get(s.group) ?? []), s]))
+    return [...map.entries()]
+  }, [data])
+
+  const save = useMutation({
+    mutationFn: () => api.put('/admin/settings', { values: Object.fromEntries([...dirty].map((k) => [k, values[k]])) }),
+    onSuccess: () => {
+      toast.success('Paramètres enregistrés')
+      setEdits({})
+      queryClient.invalidateQueries({ queryKey: ['admin', 'settings'] })
+      queryClient.invalidateQueries({ queryKey: ['config'] })
+    },
+    onError: (e) => applyServerErrors(e),
+  })
+
+  const set = (key: string, value: unknown) => {
+    setEdits((e) => ({ ...e, [key]: value }))
+  }
+
+  if (error) return <ErrorState error={error} onRetry={() => refetch()} />
+
+  return (
+    <div className="pb-24">
+      <PageHeader eyebrow="Administration" title="Paramètres" description="Paramètres métier éditables sans déploiement. Chaque modification est journalisée." />
+      <Notice tone="warning" className="mb-6" title="Valeurs à valider">
+        Les paramètres marqués « À valider par MK Délices » contiennent des valeurs techniques par défaut (horaires, capacités, délais, politiques) qui ne constituent pas
+        des décisions commerciales définitives.
+      </Notice>
+      {isLoading ? (
+        <Skeleton className="h-96" />
+      ) : (
+        <div className="space-y-6">
+          {groups.map(([group, items]) => (
+            <Card key={group} className="p-5">
+              <h2 className="mb-4 text-lg font-semibold">{GROUP_LABELS[group] ?? group}</h2>
+              {group === 'payments' && (
+                <Notice className="mb-4">
+                  Un moyen de paiement en ligne n'est proposé aux clients que s'il est activé ici <strong>et</strong> configuré techniquement (contrat marchand et identifiants
+                  serveur). Aucun contrat marchand n'est validé à ce jour : Orange Money et carte bancaire restent inactifs.
+                </Notice>
+              )}
+              <div className="divide-y divide-cocoa-100/60">
+                {items.map((s) => (
+                  <div key={s.key} className="py-4 first:pt-0 last:pb-0">
+                    <div className="mb-2 flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-semibold">{s.description ?? s.key}</p>
+                      {s.requires_validation && <Badge tone="warning">À valider par MK Délices</Badge>}
+                      {s.is_public && <Badge>Public</Badge>}
+                      {dirty.has(s.key) && <Badge tone="raspberry">Modifié</Badge>}
+                    </div>
+                    <p className="mb-2 font-mono text-[11px] text-cocoa-300">{s.key}</p>
+                    <SettingEditor setting={s} value={values[s.key]} onChange={(v) => set(s.key, v)} />
+                  </div>
+                ))}
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+      {dirty.size > 0 && (
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-cocoa-100 bg-white/95 backdrop-blur lg:left-[260px]">
+          <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
+            <p className="text-sm">{dirty.size} paramètre(s) modifié(s)</p>
+            <div className="flex gap-2">
+              <Button variant="secondary" onClick={() => setEdits({})}>
+                Annuler
+              </Button>
+              <Button loading={save.isPending} onClick={() => save.mutate()}>
+                Enregistrer
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function SettingEditor({ setting, value, onChange }: { setting: SettingItem; value: unknown; onChange: (v: unknown) => void }) {
+  const key = setting.key
+  if (key === 'business.hours') return <HoursEditor value={(value as Hours) ?? {}} onChange={onChange} />
+  if (key === 'payments.methods') {
+    const methods = (value as Record<string, boolean>) ?? {}
+    return (
+      <div className="grid gap-1 sm:grid-cols-2">
+        {Object.keys(methods).map((m) => (
+          <Toggle key={m} checked={!!methods[m]} onChange={(v) => onChange({ ...methods, [m]: v })} label={PAYMENT_LABELS[m] ?? m} />
+        ))}
+      </div>
+    )
+  }
+  if (typeof setting.value === 'boolean' || typeof value === 'boolean') return <Toggle checked={!!value} onChange={onChange} label={value ? 'Activé' : 'Désactivé'} />
+  if (INTEGER_KEYS.includes(key)) {
+    return (
+      <Input
+        aria-label={setting.description ?? key}
+        className="max-w-48"
+        inputMode="numeric"
+        value={value === null || value === undefined ? '' : String(value)}
+        onChange={(e) => {
+          const raw = e.target.value.replace(/\D/g, '')
+          onChange(raw === '' ? null : Number(raw))
+        }}
+      />
+    )
+  }
+  if (LIST_KEYS.includes(key)) {
+    return (
+      <TagInput
+        ariaLabel={setting.description ?? key}
+        value={(value as string[]) ?? []}
+        onChange={onChange}
+        placeholder={key === 'ordering.closed_dates' ? 'AAAA-MM-JJ puis Entrée' : 'Ajouter puis Entrée'}
+      />
+    )
+  }
+  if (LONG_TEXT_KEYS.includes(key)) {
+    return <Textarea aria-label={setting.description ?? key} rows={4} value={(value as string) ?? ''} onChange={(e) => onChange(e.target.value || null)} />
+  }
+  return <Input aria-label={setting.description ?? key} value={(value as string) ?? ''} onChange={(e) => onChange(e.target.value || null)} placeholder={key === 'business.whatsapp_number' ? '221XXXXXXXXX' : undefined} />
+}
+
+/** Horaires hebdomadaires : plages [ouverture, fermeture] par jour (heure de Dakar). */
+function HoursEditor({ value, onChange }: { value: Hours; onChange: (v: Hours) => void }) {
+  const setDay = (day: string, ranges: [string, string][]) => onChange({ ...value, [day]: ranges })
+  return (
+    <div className="space-y-2">
+      {DAYS.map(([day, label]) => {
+        const ranges = value[day] ?? []
+        return (
+          <div key={day} className="flex flex-col gap-2 rounded-[var(--radius-control)] bg-cream-100 p-3 sm:flex-row sm:items-center">
+            <span className="w-24 shrink-0 text-sm font-medium">{label}</span>
+            <div className="flex flex-1 flex-wrap items-center gap-2">
+              {ranges.length === 0 && <span className="text-sm text-cocoa-500">Fermé</span>}
+              {ranges.map(([open, close], i) => (
+                <span key={i} className="inline-flex items-center gap-1">
+                  <Field label={`${label} ouverture ${i + 1}`} className="[&>label]:sr-only">
+                    {(p) => <Input {...p} type="time" className="w-28" value={open} onChange={(e) => setDay(day, ranges.map((r, j) => (j === i ? [e.target.value, r[1]] : r)))} />}
+                  </Field>
+                  <span aria-hidden>–</span>
+                  <Field label={`${label} fermeture ${i + 1}`} className="[&>label]:sr-only">
+                    {(p) => <Input {...p} type="time" className="w-28" value={close} onChange={(e) => setDay(day, ranges.map((r, j) => (j === i ? [r[0], e.target.value] : r)))} />}
+                  </Field>
+                  <button type="button" className="grid size-9 place-items-center rounded-full hover:bg-cream-200" aria-label={`Supprimer la plage ${i + 1} du ${label}`} onClick={() => setDay(day, ranges.filter((_, j) => j !== i))}>
+                    <Trash2 className="size-4" />
+                  </button>
+                </span>
+              ))}
+              <Button type="button" size="sm" variant="ghost" icon={<Plus className="size-4" />} onClick={() => setDay(day, [...ranges, ['09:00', '18:00']])}>
+                Plage
+              </Button>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}

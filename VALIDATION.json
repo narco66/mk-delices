@@ -1,0 +1,98 @@
+[
+  {
+    "document": "PRD-MK-DELICES",
+    "md_bytes": 19718,
+    "docx_bytes": 20375,
+    "md_words": 2872,
+    "docx_paragraphs": 116,
+    "tables": 7
+  },
+  {
+    "document": "TRD-MK-DELICES",
+    "md_bytes": 7840,
+    "docx_bytes": 16974,
+    "md_words": 1054,
+    "docx_paragraphs": 50,
+    "tables": 4
+  },
+  {
+    "document": "APP-FLOW-MK-DELICES",
+    "md_bytes": 5718,
+    "docx_bytes": 15590,
+    "md_words": 839,
+    "docx_paragraphs": 37,
+    "tables": 4
+  },
+  {
+    "document": "UI-UX-MK-DELICES",
+    "md_bytes": 6112,
+    "docx_bytes": 15986,
+    "md_words": 915,
+    "docx_paragraphs": 38,
+    "tables": 4
+  },
+  {
+    "document": "BACKEND-SCHEMA-MK-DELICES",
+    "md_bytes": 9591,
+    "docx_bytes": 17129,
+    "md_words": 1361,
+    "docx_paragraphs": 48,
+    "tables": 4
+  },
+  {
+    "document": "API-CONTRACT-MK-DELICES",
+    "md_bytes": 7399,
+    "docx_bytes": 16900,
+    "md_words": 1034,
+    "docx_paragraphs": 52,
+    "tables": 4
+  },
+  {
+    "document": "BUSINESS-RULES-MK-DELICES",
+    "md_bytes": 6502,
+    "docx_bytes": 15891,
+    "md_words": 966,
+    "docx_paragraphs": 37,
+    "tables": 4
+  },
+  {
+    "document": "SECURITY-RULES-MK-DELICES",
+    "md_bytes": 7334,
+    "docx_bytes": 16523,
+    "md_words": 1170,
+    "docx_paragraphs": 38,
+    "tables": 5
+  },
+  {
+    "document": "IMPLEMENTATION-PLAN-MK-DELICES",
+    "md_bytes": 5810,
+    "docx_bytes": 15790,
+    "md_words": 872,
+    "docx_paragraphs": 47,
+    "tables": 3
+  },
+  {
+    "document": "TEST-PLAN-MK-DELICES",
+    "md_bytes": 7429,
+    "docx_bytes": 16401,
+    "md_words": 1186,
+    "docx_paragraphs": 36,
+    "tables": 5
+  },
+  {
+    "document": "DEPLOYMENT-MK-DELICES",
+    "md_bytes": 5858,
+    "docx_bytes": 15798,
+    "md_words": 862,
+    "docx_paragraphs": 44,
+    "tables": 5
+  },
+  {
+    "document": "ROADMAP-BUDGET-MK-DELICES",
+    "md_bytes": 6121,
+    "docx_bytes": 16057,
+    "md_words": 1003,
+    "docx_paragraphs": 42,
+    "tables": 6
+  }
+]

@@ -13,7 +13,8 @@ import { Checkbox, Field, Input } from '@/components/ui/Form'
 import { useAuth } from '@/features/auth/AuthContext'
 import { api } from '@/lib/api'
 import { formatDateTime } from '@/lib/format'
-import { applyServerErrors, Toggle } from '../catalog/shared'
+import { Toggle } from '../catalog/shared'
+import { applyServerErrors } from '../catalog/utils'
 
 interface StaffUser {
   id: string

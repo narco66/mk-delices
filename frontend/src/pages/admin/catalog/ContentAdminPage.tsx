@@ -1,8 +1,8 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FileText, Pencil, Plus, Trash2 } from 'lucide-react'
-import { useEffect, useState } from 'react'
-import { useForm } from 'react-hook-form'
+import { useState } from 'react'
+import { useForm, useWatch } from 'react-hook-form'
 import Markdown from 'react-markdown'
 import { toast } from 'sonner'
 import { z } from 'zod'
@@ -13,7 +13,8 @@ import { Field, Input, Select, Textarea } from '@/components/ui/Form'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/cn'
 import { formatDateTime } from '@/lib/format'
-import { applyServerErrors, CharCount } from './shared'
+import { CharCount } from './shared'
+import { applyServerErrors } from './utils'
 
 interface ContentPage {
   id: string
@@ -121,7 +122,7 @@ function PagesTab() {
           ))}
         </ul>
       )}
-      <PageEditor page={editing} onClose={() => setEditing(null)} />
+      {editing && <PageEditor key={editing === 'new' ? 'new' : editing.id} page={editing} onClose={() => setEditing(null)} />}
     </>
   )
 }
@@ -130,12 +131,10 @@ function PageEditor({ page, onClose }: { page: ContentPage | 'new' | null; onClo
   const queryClient = useQueryClient()
   const current = page && page !== 'new' ? page : null
   const [preview, setPreview] = useState(false)
-  const { register, handleSubmit, reset, watch, setError, formState } = useForm<PageValues>({ resolver: zodResolver(pageSchema) })
-
-  useEffect(() => {
-    if (!page) return
-    setPreview(false)
-    reset({
+  // Monté avec une clé par page : les valeurs initiales suffisent, sans réinitialisation dans un effet.
+  const { register, handleSubmit, control, setError, formState } = useForm<PageValues>({
+    resolver: zodResolver(pageSchema),
+    defaultValues: {
       slug: current?.slug ?? '',
       title: current?.title ?? '',
       excerpt: current?.excerpt ?? '',
@@ -143,8 +142,10 @@ function PageEditor({ page, onClose }: { page: ContentPage | 'new' | null; onClo
       status: current?.status ?? 'draft',
       seo_title: current?.seo_title ?? '',
       seo_description: current?.seo_description ?? '',
-    })
-  }, [page, current, reset])
+    },
+  })
+  const [body, seoTitle, seoDescription] = useWatch({ control, name: ['body', 'seo_title', 'seo_description'] })
+
 
   const save = useMutation({
     mutationFn: (v: PageValues) => {
@@ -207,7 +208,7 @@ function PageEditor({ page, onClose }: { page: ContentPage | 'new' | null; onClo
           </div>
           {preview ? (
             <div className="prose-mk min-h-48 rounded-[var(--radius-control)] border border-cocoa-100 bg-white p-4">
-              <Markdown>{watch('body')}</Markdown>
+              <Markdown>{body ?? ''}</Markdown>
             </div>
           ) : (
             <Field label="Contenu" error={e.body?.message} className="[&>label]:sr-only">
@@ -215,10 +216,10 @@ function PageEditor({ page, onClose }: { page: ContentPage | 'new' | null; onClo
             </Field>
           )}
         </div>
-        <Field label="Titre SEO" error={e.seo_title?.message} hint={<CharCount value={watch('seo_title')} max={70} />}>
+        <Field label="Titre SEO" error={e.seo_title?.message} hint={<CharCount value={seoTitle} max={70} />}>
           {(p) => <Input {...p} {...register('seo_title')} />}
         </Field>
-        <Field label="Description SEO" error={e.seo_description?.message} hint={<CharCount value={watch('seo_description')} max={170} />}>
+        <Field label="Description SEO" error={e.seo_description?.message} hint={<CharCount value={seoDescription} max={170} />}>
           {(p) => <Textarea {...p} rows={2} {...register('seo_description')} />}
         </Field>
       </form>

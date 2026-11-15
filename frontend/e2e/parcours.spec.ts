@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { E2E_FIRST_NAME, login, noHorizontalOverflow } from './helpers'
+import { E2E_FIRST_NAME, login, loginWithForm, noHorizontalOverflow } from './helpers'
 
 
 test('Accueil : tiramisus mis en avant, aucun débordement à 360 px', async ({ page }) => {
@@ -62,7 +62,8 @@ test('Scénario C : panier envoyé sur WhatsApp = brouillon, sans paiement', asy
 })
 
 test('Scénario G (UI) : un livreur ne peut pas ouvrir le back-office', async ({ page }) => {
-  await login(page, 'livreur1@mk-delices.test')
+  // Vrai formulaire de connexion (les autres tests réutilisent les sessions de auth.setup.ts).
+  await loginWithForm(page, 'livreur1@mk-delices.test')
   await expect(page).toHaveURL(/\/livreur/)
   await page.goto('/admin/commandes')
   await expect(page).toHaveURL(/acces-refuse/)

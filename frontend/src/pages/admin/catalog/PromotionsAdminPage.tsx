@@ -2,7 +2,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Pencil, Plus, Tag } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { Controller, useForm } from 'react-hook-form'
+import { Controller, useForm, useWatch } from 'react-hook-form'
 import { toast } from 'sonner'
 import { z } from 'zod'
 import { Button } from '@/components/ui/Button'
@@ -11,7 +11,8 @@ import { EmptyState, ErrorState, Notice, Skeleton } from '@/components/ui/Feedba
 import { Field, Input, Select, Textarea } from '@/components/ui/Form'
 import { api } from '@/lib/api'
 import { formatDateTime, formatXof } from '@/lib/format'
-import { applyServerErrors, toNullableInt, Toggle } from './shared'
+import { Toggle } from './shared'
+import { applyServerErrors, toNullableInt } from './utils'
 
 interface Promotion {
   id: string
@@ -140,7 +141,8 @@ export function PromotionsAdminPage() {
 function PromotionModal({ promotion, onClose }: { promotion: Promotion | 'new' | null; onClose: () => void }) {
   const queryClient = useQueryClient()
   const current = promotion && promotion !== 'new' ? promotion : null
-  const { register, handleSubmit, reset, control, watch, setError, formState } = useForm<FormValues>({ resolver: zodResolver(schema) })
+  const { register, handleSubmit, reset, control, setError, formState } = useForm<FormValues>({ resolver: zodResolver(schema) })
+  const discountType = useWatch({ control, name: 'discount_type' })
 
   useEffect(() => {
     if (!promotion) return
@@ -215,7 +217,7 @@ function PromotionModal({ promotion, onClose }: { promotion: Promotion | 'new' |
             </Select>
           )}
         </Field>
-        <Field label={watch('discount_type') === 'percent' ? 'Valeur (%)' : 'Valeur (FCFA)'} required error={e.discount_value?.message}>
+        <Field label={discountType === 'percent' ? 'Valeur (%)' : 'Valeur (FCFA)'} required error={e.discount_value?.message}>
           {(p) => <Input {...p} inputMode="numeric" {...register('discount_value')} />}
         </Field>
         <Field label="Sous-total minimum (FCFA)" error={e.min_subtotal_xof?.message}>

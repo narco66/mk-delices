@@ -112,9 +112,9 @@ export function VariantPicker({ variants, value, onChange }: { variants: Variant
               )}
             >
               <input type="radio" name="variant" value={v.id} checked={selected} disabled={!v.available} onChange={() => onChange(v.id)} className="sr-only" />
-              <span>
+              <span className="min-w-0">
                 <span className="block font-medium">{v.label}</span>
-                <span className="flex items-center gap-1 text-xs text-cocoa-500">
+                <span className="flex flex-wrap items-center gap-1 text-xs text-cocoa-500">
                   {v.serves ? `${v.serves} pers. · ` : ''}
                   {!v.available ? (
                     'Indisponible'

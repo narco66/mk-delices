@@ -29,7 +29,6 @@ Parcours complet visiteur → commande → paiement (simulé) → acceptation �
 - **Wave** : adaptateur conforme à la documentation publique, jamais exécuté (pas de compte marchand).
 - **Notifications client** : email uniquement ; SMS et WhatsApp Business Platform non branchés.
 - **Chaîne du froid** : contrôles de conditionnement en place ; seuil sanitaire non défini.
-- **Back-office** : toutes les API testées ; parcours navigateur couvrant commandes, préparation, livraisons et espace livreur ; écrans catalogue (édition), contenus, paramètres, utilisateurs, finances non parcourus en navigateur.
 - **Accessibilité** : audit automatique WCAG 2.2 AA conforme (0 violation serious/critical) ; test avec lecteur d'écran par une personne à prévoir.
 
 ## 5. Fonctionnalités bloquées
@@ -42,10 +41,10 @@ Orange Money et carte bancaire (contrats/spécifications), données commerciales
 10 migrations, **42 tables** PostgreSQL (dont 25 tables métier) : identités/permissions, catalogue, paramètres, zones, clients/adresses, promotions, paniers, commandes/lignes/événements, paiements/événements/remboursements, livreurs/zones/missions, contenus, avis, notifications, audit, idempotence, files d'attente. UUID, montants entiers, contraintes CHECK, index unique partiel, triggers d'immuabilité.
 
 ## 8. Tests exécutés et résultats
-PHPUnit **74/74** (658 assertions, PostgreSQL) · Vitest **9/9** · Playwright **32/32** (mobile 360 px + desktop, dont workflow back-office multi-acteurs et accessibilité) · axe-core : 0 violation serious/critical · TypeScript 0 erreur · ESLint 0 erreur · Pint conforme · build OK · audits : 0 vulnérabilité en production. Scénarios A à H : tous ✅ (B avec prestataire simulé).
+PHPUnit **74/74** (658 assertions, PostgreSQL) · Vitest **9/9** · Playwright **47/47** (mobile 360 px + desktop : parcours client, workflows back-office multi-acteurs, écrans d'administration, accessibilité) · axe-core : 0 violation serious/critical · TypeScript 0 erreur · ESLint 0 erreur, 0 avertissement · emails vérifiés (Mailpit) · Pint conforme · build OK · audits : 0 vulnérabilité en production. Scénarios A à H : tous ✅ (B avec prestataire simulé).
 
 ## 9. Anomalies corrigées
-13 anomalies détectées par les tests et corrigées (fuseau PostgreSQL, `MAX(uuid)`, déduplication webhook, session après connexion, créneau suivant, chargement paresseux, `robots.txt`, double React, Vitest sous Windows, dépendances de dev, contrastes WCAG, nom accessible du logo, bouton de commande actif malgré un blocage) — détail `DEV-TESTS.md` §4.
+16 anomalies détectées par les tests et corrigées (fuseau PostgreSQL, `MAX(uuid)`, déduplication webhook, session après connexion, créneau suivant, chargement paresseux, `robots.txt`, double React, Vitest sous Windows, dépendances de dev, contrastes WCAG, nom accessible du logo, bouton de commande actif malgré un blocage, page de retour après remboursement, débordement mobile de la fiche produit, effet de réinitialisation de l'éditeur) — détail `DEV-TESTS.md` §4.
 
 ## 10. Anomalies restantes / points de vigilance
 - Aucune anomalie bloquante connue.
@@ -67,7 +66,7 @@ PHPUnit **74/74** (658 assertions, PostgreSQL) · Vitest **9/9** · Playwright *
 Implémenté et testé : RBAC deny-by-default côté serveur, contrôle par objet, CSRF/session HttpOnly, limitation de débit, webhooks signés + vérification PSP, idempotence, journaux immuables et expurgés, masquage des données personnelles par rôle, en-têtes de sécurité, aucune élévation possible par l'inscription publique, secrets hors Git. À faire en production : HTTPS/HSTS et cookies `Secure`, CSP du SPA (Nginx), MFA administrateurs, sauvegardes chiffrées, revue juridique CDP.
 
 ## 13. État de déploiement
-Non déployé. Build de production fonctionnel, CI GitHub Actions prête, topologie Nginx/PHP-FPM/PostgreSQL/worker/cron documentée. Aucune ressource de production utilisée.
+Non déployé. Build de production fonctionnel, CI GitHub Actions prête. Fichiers de production prêts dans `deploy/` (Nginx HTTPS + CSP, Supervisor, cron, sauvegarde chiffrée, test de restauration, script de déploiement, modèle `.env`). Guides utilisateurs des 5 rôles dans `docs/guides/`. Aucune ressource de production utilisée.
 
 ## 14. Procédure de démarrage
 Voir `README.md` (installation, `scripts/start-dev.ps1`, comptes de démonstration, paiement simulé).
@@ -77,6 +76,6 @@ Voir `README.md` (installation, `scripts/start-dev.ps1`, comptes de démonstrati
 2. Signer un contrat PSP, valider l'adaptateur Wave en sandbox (créer les tests d'intégration correspondants), activer le moyen de paiement.
 3. Choisir l'hébergement ; configurer HTTPS, `SESSION_SECURE_COOKIE`, CSP, sauvegardes chiffrées et test de restauration (T-020), supervision et alertes.
 4. Fournir les photographies et le logo ; remplacer les illustrations.
-5. Lancer un test de charge (NFR-002) et un test avec lecteur d'écran ; compléter les parcours E2E des écrans d'administration restants.
+5. Lancer un test de charge (NFR-002) et un test avec lecteur d'écran ; exécuter `deploy/scripts/restore-test.sh` sur une sauvegarde réelle (T-020).
 6. Vérifier que le dépôt GitHub est privé et que la CI s'exécute.
 7. Former les équipes (commercial, préparation, livraisons) et réaliser une recette métier avec des commandes de test marquées.

@@ -13,7 +13,7 @@ import { Checkbox, Field, Input, Select, Textarea } from '@/components/ui/Form'
 import { api, ApiError } from '@/lib/api'
 import { formatDateTime, formatSlot, formatXof } from '@/lib/format'
 import type { Mission } from '@/types/api'
-import { CONDITION_LABELS, INCIDENT_LABELS, PROOF_LABELS } from '../admin/orders/shared'
+import { CONDITION_LABELS, INCIDENT_LABELS, PROOF_LABELS } from '../admin/orders/labels'
 import { mapsUrl, useCourierOverview } from './useCourier'
 
 type Action = 'accept' | 'refuse' | 'pick_up' | 'deliver' | 'fail'

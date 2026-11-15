@@ -8,7 +8,8 @@ import { ErrorState, Notice, Skeleton } from '@/components/ui/Feedback'
 import { Field, Input, Textarea } from '@/components/ui/Form'
 import { api } from '@/lib/api'
 import { PAYMENT_LABELS } from '@/lib/format'
-import { applyServerErrors, TagInput, Toggle } from '../catalog/shared'
+import { TagInput, Toggle } from '../catalog/shared'
+import { applyServerErrors } from '../catalog/utils'
 
 interface SettingItem {
   key: string

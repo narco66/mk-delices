@@ -14,7 +14,7 @@ import { useAuth } from '@/features/auth/AuthContext'
 import { api, ApiError } from '@/lib/api'
 import { allergenLabel, CHANNEL_LABELS, formatDateTime, formatSlot, formatXof, PAYMENT_LABELS } from '@/lib/format'
 import type { AdminOrder, OrderEvent, Zone } from '@/types/api'
-import { ACTION_LABELS, INCIDENT_LABELS, ORDER_STATUS_LABELS, PAYMENT_ATTEMPT_LABELS, providerLabel, REFUND_STATUS_LABELS } from './shared'
+import { ACTION_LABELS, INCIDENT_LABELS, ORDER_STATUS_LABELS, PAYMENT_ATTEMPT_LABELS, providerLabel, REFUND_STATUS_LABELS } from './labels'
 
 interface OrderDetailResponse {
   data: AdminOrder

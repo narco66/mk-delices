@@ -14,20 +14,6 @@ const ORDERS_COLOR = '#7a4d40'
 const GRID = '#efe4d8'
 const AXIS_TEXT = '#7a4d40'
 
-const ORDER_STATUS_LABELS: Record<string, string> = {
-  draft: 'Brouillon',
-  pending_confirmation: 'À confirmer',
-  accepted: 'Acceptée',
-  preparing: 'En préparation',
-  ready: 'Prête',
-  assigned: 'Confiée au livreur',
-  picked_up: 'En livraison',
-  delivered: 'Livrée',
-  delivery_failed: 'Échec de livraison',
-  cancelled: 'Annulée',
-  rejected: 'Refusée',
-}
-
 function shortDay(day: string): string {
   const [, m, d] = day.split('-')
   return `${d}/${m}`
@@ -163,14 +149,6 @@ export function RankedBars({ title, items, empty }: { title: string; items: { ke
       )}
     </Card>
   )
-}
-
-export function statusItems(breakdown: StatsSummary['status_breakdown']) {
-  return breakdown.map((s) => ({ key: s.status, label: ORDER_STATUS_LABELS[s.status] ?? s.status, value: s.count }))
-}
-
-export function topProductItems(top: StatsSummary['top_products']) {
-  return top.map((p) => ({ key: p.product_id, label: p.name, value: p.quantity, detail: formatXof(p.revenue_xof) }))
 }
 
 export type { Kpis }

@@ -1,11 +1,11 @@
-import { lazy, Suspense, type ComponentType, type ReactNode } from 'react'
-import { createBrowserRouter, Navigate, useLocation } from 'react-router'
+import { lazy, Suspense, type ComponentType } from 'react'
+import { createBrowserRouter } from 'react-router'
 import { Spinner } from '@/components/ui/Feedback'
-import { useAuth } from '@/features/auth/AuthContext'
 import { AdminLayout } from '@/layouts/AdminLayout'
 import { CourierLayout } from '@/layouts/CourierLayout'
 import { PublicLayout } from '@/layouts/PublicLayout'
 import { RouteError } from '@/pages/RouteError'
+import { RequireAuth } from './RequireAuth'
 
 /** Chargement différé par page (le back-office n'alourdit pas la boutique). */
 function page(loader: () => Promise<Record<string, unknown>>, name: string) {
@@ -15,17 +15,6 @@ function page(loader: () => Promise<Record<string, unknown>>, name: string) {
       <Component />
     </Suspense>
   )
-}
-
-/** Garde de route côté client — l'autorisation réelle est TOUJOURS vérifiée par l'API. */
-function RequireAuth({ children, permission, role }: { children: ReactNode; permission?: string[]; role?: string[] }) {
-  const { me, isLoading, can, hasRole } = useAuth()
-  const location = useLocation()
-  if (isLoading) return <Spinner label="Vérification de la session…" />
-  if (!me) return <Navigate to={`/connexion?redirect=${encodeURIComponent(location.pathname + location.search)}`} replace />
-  if (permission && !permission.some((p) => can(p))) return <Navigate to="/acces-refuse" replace />
-  if (role && !hasRole(...role)) return <Navigate to="/acces-refuse" replace />
-  return <>{children}</>
 }
 
 const pub = () => import('@/pages/public')

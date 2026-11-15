@@ -11,7 +11,7 @@ import { useAuth } from '@/features/auth/AuthContext'
 import { api } from '@/lib/api'
 import { formatDateTime, formatSlot, formatXof } from '@/lib/format'
 import type { AdminOrder, Assignment } from '@/types/api'
-import { CONDITION_LABELS, INCIDENT_LABELS, TRANSPORT_LABELS } from '../orders/shared'
+import { CONDITION_LABELS, INCIDENT_LABELS, TRANSPORT_LABELS } from '../orders/labels'
 
 interface BoardPartner {
   id: string

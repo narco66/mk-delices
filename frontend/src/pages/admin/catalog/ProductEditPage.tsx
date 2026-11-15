@@ -2,7 +2,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, ImagePlus, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { Controller, useFieldArray, useForm } from 'react-hook-form'
+import { Controller, useFieldArray, useForm, useWatch } from 'react-hook-form'
 import { Link, useNavigate, useParams } from 'react-router'
 import { toast } from 'sonner'
 import { z } from 'zod'
@@ -13,8 +13,9 @@ import { Checkbox, Field, Input, Select, Textarea } from '@/components/ui/Form'
 import { api } from '@/lib/api'
 import { allergenLabel } from '@/lib/format'
 import type { Paginated, Product } from '@/types/api'
-import { PRODUCT_STATUS_LABELS } from './ProductsPage'
-import { applyServerErrors, CharCount, TagInput, toNullableInt, Toggle } from './shared'
+import { PRODUCT_STATUS_LABELS } from './labels'
+import { CharCount, TagInput, Toggle } from './shared'
+import { applyServerErrors, toNullableInt } from './utils'
 import { useAdminCategories } from './useAdminCategories'
 
 const ALLERGEN_SUGGESTIONS = ['lait', 'œufs', 'gluten', 'fruits à coque', 'arachides', 'soja', 'sésame']
@@ -142,7 +143,8 @@ export function ProductEditPage() {
   })
 
   const form = useForm<FormValues>({ resolver: zodResolver(schema), defaultValues: toForm() })
-  const { register, control, handleSubmit, reset, formState, setError, watch } = form
+  const { register, control, handleSubmit, reset, formState, setError } = form
+  const [seoTitle, seoDescription, allergens, watchedVariants] = useWatch({ control, name: ['seo_title', 'seo_description', 'allergens', 'variants'] })
   const variants = useFieldArray({ control, name: 'variants' })
   useEffect(() => {
     if (product) reset(toForm(product))
@@ -175,8 +177,6 @@ export function ProductEditPage() {
   if (!isNew && error) return <ErrorState error={error} onRetry={() => refetch()} />
 
   const e = formState.errors
-  const seoTitle = watch('seo_title')
-  const seoDescription = watch('seo_description')
 
   return (
     <div>
@@ -288,7 +288,7 @@ export function ProductEditPage() {
               return (
                 <fieldset key={f.id} className="rounded-[var(--radius-control)] border border-cocoa-100 p-4">
                   <legend className="px-1 text-sm font-semibold">
-                    Format {i + 1} {watch(`variants.${i}.archived`) && <Badge>Archivé</Badge>}
+                    Format {i + 1} {watchedVariants?.[i]?.archived && <Badge>Archivé</Badge>}
                   </legend>
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                     <Field label="SKU" required error={ve?.sku?.message}>
@@ -390,7 +390,7 @@ export function ProductEditPage() {
             <Button type="submit" size="lg" className="w-full" loading={save.isPending} disabled={!isNew && !formState.isDirty}>
               {isNew ? 'Créer le produit' : 'Enregistrer'}
             </Button>
-            {watch('allergens').length > 0 && <p className="text-center text-xs text-cocoa-500">Allergènes : {watch('allergens').map(allergenLabel).join(', ')}</p>}
+            {allergens.length > 0 && <p className="text-center text-xs text-cocoa-500">Allergènes : {allergens.map(allergenLabel).join(', ')}</p>}
           </div>
         </div>
       </form>

@@ -1,0 +1,5 @@
+# Crontab (utilisateur www-data) — copier dans /etc/cron.d/mk-delices
+# Planificateur Laravel : rapprochement des paiements (5 min), purge des paniers expirés (03:30 Dakar).
+* * * * * www-data cd /var/www/mk-delices/backend && php artisan schedule:run >> /dev/null 2>&1
+# Sauvegarde chiffrée quotidienne de PostgreSQL + médias (02:00 UTC = 02:00 Dakar).
+0 2 * * * root /var/www/mk-delices/deploy/scripts/backup.sh >> /var/log/mk-delices/backup.log 2>&1

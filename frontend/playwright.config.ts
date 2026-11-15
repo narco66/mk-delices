@@ -8,6 +8,8 @@ export default defineConfig({
   testDir: './e2e',
   globalTeardown: './e2e/global-teardown.ts',
   timeout: 60_000,
+  // Serveur PHP de développement mono-processus sous Windows : marge pour les sessions concurrentes.
+  expect: { timeout: 15_000 },
   fullyParallel: false,
   workers: 1,
   reporter: [['list'], ['html', { open: 'never' }]],
@@ -21,7 +23,8 @@ export default defineConfig({
     channel: process.env.E2E_CHANNEL || undefined,
   },
   projects: [
-    { name: 'mobile', use: { ...devices['Pixel 7'], viewport: { width: 360, height: 780 }, channel: process.env.E2E_CHANNEL || undefined } },
-    { name: 'desktop', use: { ...devices['Desktop Chrome'], channel: process.env.E2E_CHANNEL || undefined } },
+    { name: 'setup', testMatch: /auth\.setup\.ts/ },
+    { name: 'mobile', use: { ...devices['Pixel 7'], viewport: { width: 360, height: 780 }, channel: process.env.E2E_CHANNEL || undefined }, dependencies: ['setup'] },
+    { name: 'desktop', use: { ...devices['Desktop Chrome'], channel: process.env.E2E_CHANNEL || undefined }, dependencies: ['setup'] },
   ],
 })

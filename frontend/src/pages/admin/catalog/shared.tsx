@@ -1,20 +1,6 @@
 import { ChevronLeft, ChevronRight, X } from 'lucide-react'
 import { useState, type KeyboardEvent } from 'react'
-import type { FieldValues, Path, UseFormSetError } from 'react-hook-form'
-import { toast } from 'sonner'
-import { errorMessage } from '@/components/ui/Feedback'
-import { ApiError } from '@/lib/api'
 import { cn } from '@/lib/cn'
-
-/** Reporte les erreurs de validation serveur (422) sur les champs du formulaire, sinon toast. */
-export function applyServerErrors<T extends FieldValues>(error: unknown, setError?: UseFormSetError<T>) {
-  if (setError && error instanceof ApiError && error.code === 'validation_failed') {
-    Object.entries(error.fieldErrors).forEach(([field, messages]) => setError(field as Path<T>, { type: 'server', message: messages[0] }))
-    toast.error('Certaines informations sont invalides.')
-    return
-  }
-  toast.error(errorMessage(error))
-}
 
 export function Pagination({ page, lastPage, total, onPage }: { page: number; lastPage: number; total?: number; onPage: (p: number) => void }) {
   if (lastPage <= 1) return total !== undefined ? <p className="mt-4 text-center text-xs text-cocoa-500">{total} élément(s)</p> : null
@@ -109,12 +95,6 @@ export function CharCount({ value, max }: { value: string | null | undefined; ma
 }
 
 /** Valeurs numériques optionnelles issues de champs texte. */
-export function toNullableInt(v: unknown): number | null {
-  if (v === '' || v === null || v === undefined) return null
-  const n = Number(v)
-  return Number.isFinite(n) ? Math.trunc(n) : null
-}
-
 export interface LaravelPage<T> {
   data: T[]
   current_page: number

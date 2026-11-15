@@ -4,7 +4,8 @@ Boutique en ligne, commande WhatsApp, paiement, préparation et livraison pour *
 
 - `backend/` — API REST Laravel 13 + PostgreSQL
 - `frontend/` — SPA React 19 / TypeScript / Vite (boutique, back-office, espace livreur)
-- `docs/` — dossier de cadrage (01 à 13) et documentation de développement (`DEV-*.md`, `RAPPORT-FINAL-…`)
+- `docs/` — dossier de cadrage (01 à 13), documentation de développement (`DEV-*.md`, `RAPPORT-FINAL-…`) et **guides utilisateurs** (`docs/guides/`)
+- `deploy/` — configuration de production prête à adapter (Nginx, Supervisor, cron, sauvegarde/restauration, script de déploiement, modèle `.env`)
 
 > **État :** application prête pour une recette technique **avec données fictives**. Catalogue, prix, zones, numéro WhatsApp, prestataires de paiement et textes juridiques restent à fournir par MK Délices (`docs/DEV-DECISIONS-A-VALIDER.md`). Aucun paiement réel n'est possible tant qu'un contrat marchand n'est pas configuré.
 
@@ -93,11 +94,26 @@ Résultats détaillés : `docs/DEV-TESTS.md`.
 
 ## Déploiement
 
-Non exécuté. Topologie, variables et procédure : `docs/DEV-ARCHITECTURE.md` §4 et `docs/11-DEPLOYMENT/`. La CI (`.github/workflows/ci.yml`) exécute lint, types, tests PostgreSQL, build et audits.
+Non exécuté (hébergeur à choisir). Fichiers prêts dans `deploy/` :
+
+| Fichier | Rôle |
+|---|---|
+| `deploy/nginx/mk-delices.conf` | HTTPS, en-têtes de sécurité et CSP, cache des assets, routage API/SPA, journaux sans chaîne de requête |
+| `deploy/supervisor/mk-delices-worker.conf` | Worker de file d'attente (paiements, emails) |
+| `deploy/cron/mk-delices` | Planificateur Laravel + sauvegarde quotidienne |
+| `deploy/scripts/backup.sh` | Sauvegarde PostgreSQL + médias chiffrée (GPG), copie distante (rclone), rotation |
+| `deploy/scripts/restore-test.sh` | Test de restauration sur base jetable (T-020, mesure du RTO) |
+| `deploy/scripts/deploy.sh` | Déploiement : sauvegarde, migrations, build, caches, tests de fumée |
+| `deploy/env.production.example` | Modèle de configuration de production (sans secret) |
+
+Topologie et variables : `docs/DEV-ARCHITECTURE.md` §4 et `docs/11-DEPLOYMENT/`. La CI (`.github/workflows/ci.yml`) exécute lint, types, tests PostgreSQL, build et audits.
+
+## Guides utilisateurs
+
+`docs/guides/` : administrateur, gestionnaire commercial, préparateur, responsable des livraisons, livreur.
 
 ## Limitations connues
 
 - Wave : adaptateur écrit d'après la documentation publique, **jamais exécuté contre un compte réel** ; Orange Money et carte : non implémentés (contrats/spécifications requis).
 - Notifications client par email uniquement (`MAIL_MAILER=log` en dev) ; SMS / WhatsApp automatisés non branchés.
 - Points de fidélité, suivi GPS et commandes événementielles : hors MVP.
-- Certains écrans d'administration (édition catalogue, contenus, paramètres, utilisateurs, finances) ne sont pas encore parcourus en E2E.

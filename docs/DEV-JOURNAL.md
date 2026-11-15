@@ -35,5 +35,14 @@
 - **UX :** bouton « Confirmer » désactivé quand un blocage est affiché (minimum de commande, zone…), avec explication reliée.
 - **Résultats :** PHPUnit 74/74 (658 assertions), Vitest 9/9, Playwright 32/32, axe 0 violation serious/critical.
 
+## 15/11/2026 — Phases 7 et 8 : fin de recette technique, préparation du déploiement
+- **E2E administration :** catalogue (création, photo, publication, désactivation), promotions, contenus, utilisateurs (création puis désactivation en direct), paramètres, paiements, remboursement en double contrôle, scénario F avec règlement du livreur. Sessions de démonstration ouvertes une fois par campagne (`auth.setup.ts`).
+- **Défauts corrigés :** page de retour de paiement après remboursement, débordement mobile de la fiche produit, `setState` dans un effet de l'éditeur de pages ; données de test restées publiques après une campagne interrompue, neutralisées.
+- **Déploiement :** dossier `deploy/` (Nginx, Supervisor, cron, sauvegarde chiffrée, test de restauration, script de déploiement, modèle `.env`).
+- **Guides utilisateurs :** `docs/guides/` (5 rôles).
+- **Emails :** envoi SMTP vérifié de bout en bout avec Mailpit.
+- **Qualité du code :** ESLint 0 avertissement (`useWatch`, modules de libellés dédiés).
+- **Résultats :** PHPUnit 74/74, Vitest 9/9, Playwright 47/47.
+
 ## Travaux restants (voir rapport final §15)
-Décisions métier/juridiques, contrats PSP, hébergement, sauvegardes, tests de charge, test avec lecteur d'écran, parcours E2E des écrans d'administration restants (catalogue, contenus, paramètres, utilisateurs, finances).
+Décisions métier/juridiques, contrats PSP, hébergement, sauvegardes, tests de charge, test avec lecteur d'écran, exécution réelle du déploiement et du test de restauration une fois l'hébergeur choisi.

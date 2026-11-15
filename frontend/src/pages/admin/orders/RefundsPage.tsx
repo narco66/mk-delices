@@ -11,7 +11,8 @@ import { useAuth } from '@/features/auth/AuthContext'
 import { api, toQuery } from '@/lib/api'
 import { formatDateTime, formatXof } from '@/lib/format'
 import type { Refund } from '@/types/api'
-import { Pagination, REFUND_STATUS_LABELS, type PaginatedResponse } from './shared'
+import { Pagination, type PaginatedResponse } from './shared'
+import { REFUND_STATUS_LABELS } from './labels'
 
 type Dialog = { refund: Refund; kind: 'reject' | 'complete' } | null
 

@@ -1,6 +1,6 @@
 # Résultats des tests — MK Délices
 
-**Dernière exécution :** 15/11/2026 (2e campagne : back-office, accessibilité, images) · Poste Windows 11 / Laragon · PHP 8.5.12 · PostgreSQL 18.4 (port 5433) · Node 22.23 · Edge (Playwright).
+**Dernière exécution :** 15/11/2026 (3e campagne : écrans d'administration, emails, déploiement) · Poste Windows 11 / Laragon · PHP 8.5.12 · PostgreSQL 18.4 (port 5433) · Node 22.23 · Edge (Playwright).
 
 Seuls des tests **réellement exécutés** figurent ici. Commandes de reproduction en fin de document.
 
@@ -11,10 +11,11 @@ Seuls des tests **réellement exécutés** figurent ici. Commandes de reproducti
 | Backend — fonctionnels + unitaires | PHPUnit 12 | PostgreSQL `mk_delices_test` | **74 tests, 658 assertions, 0 échec** |
 | Style PHP | Laravel Pint (PSR-12) | `backend/` | conforme |
 | Frontend — unitaires | Vitest 5 + Testing Library | jsdom | **9 tests, 0 échec** |
-| Frontend — types / lint | `tsc -b`, ESLint | `frontend/src` | 0 erreur TS ; ESLint 0 erreur, 26 avertissements non bloquants (*fast refresh*, compatibilité react-hook-form/compilateur React) |
+| Frontend — types / lint | `tsc -b`, ESLint | `frontend/` | 0 erreur TS ; **ESLint : 0 erreur, 0 avertissement** |
 | Build de production | Vite 8 | `frontend/dist` | OK (plus gros bloc : 333 kB / 103 kB gzip) |
-| Bout en bout | Playwright 1.65 (Edge) | Vite :5173 → Laravel :8000 → PostgreSQL `mk_delices` | **32 exécutions réussies** (16 tests × mobile 360 px et desktop) : parcours client, back-office D+E multi-acteurs, accessibilité |
+| Bout en bout | Playwright 1.65 (Edge) | Vite :5173 → Laravel :8000 → PostgreSQL `mk_delices` | **47 exécutions réussies** (1 préparation des sessions + 23 tests × mobile 360 px et desktop) : parcours client, back-office D+E et F multi-acteurs, écrans d'administration, accessibilité |
 | Accessibilité | axe-core 4 (WCAG 2.0/2.1/2.2 A et AA) | 7 pages publiques, commande, tableau de bord, liste des commandes | **0 violation « serious » ou « critical »** après corrections ; parcours de commande au clavier seul réussi (T-022) |
+| Emails | Mailpit (Laragon) | commande avec email | Email « Nous avons bien reçu votre commande » reçu (envoi réel SMTP local, file d'attente) |
 | Dépendances | `composer audit`, `npm audit --omit=dev` | — | 0 vulnérabilité en production ; 7 « moderate » dans l'outillage ESLint (déni de service `minimatch`, GHSA-g3hv-75wg-m249), sans impact en production — correctif amont attendu (le seul correctif proposé par npm rétrograde typescript-eslint) |
 
 ## 2. Détail backend (PHPUnit, PostgreSQL)
@@ -98,11 +99,15 @@ Seuls des tests **réellement exécutés** figurent ici. Commandes de reproducti
 | A-10 | Dépendances de développement absentes | `NODE_ENV=production` défini globalement sur le poste | `npm ci --include=dev` (documenté) | ✅ |
 | A-11 | Contrastes insuffisants (WCAG 1.4.3) : texte caramel 3,1–4,0:1, texte `cocoa-300` 2,9:1 | Teintes de la palette indicative | `caramel-600` assombri (#855B2E, ≥ 4,6:1), nouveau jeton texte `cocoa-400` (#765D56, 5,8:1) ; `cocoa-300` réservé au décor | ✅ (axe) |
 | A-12 | Nom accessible du logo différent du texte visible (WCAG 2.5.3) | `aria-label` « MK Délices — accueil » | Texte visible + « — accueil » masqué visuellement | ✅ (axe) |
+| A-14 | Page de retour de paiement après remboursement : « Paiement en vérification » avec chargement infini | Seuls « payé » et « échoué » étaient prévus | Messages dédiés : remboursée, remboursement partiel, aucun paiement reçu | ✅ (E2E) |
+| A-15 | Débordement horizontal de la fiche produit sur mobile (13 à 24 px) | Largeur minimale automatique des colonnes de grille/flex | `min-w-0` + retour à la ligne ; vérifié à 320, 360 et 390 px | ✅ (E2E) |
+| A-16 | `setState` dans un effet de l'éditeur de pages (révélé en retirant `watch()`) | Réinitialisation du formulaire dans un effet | Éditeur monté avec une clé par page, valeurs initiales | ✅ (ESLint, E2E) |
 | A-13 | Bouton « Confirmer » actif malgré un blocage affiché (ex. minimum de commande de la zone) | UX : seul le serveur refusait | Bouton désactivé + message explicatif relié (`aria-describedby`) | ✅ (E2E) |
 
 ## 5. Couverture non automatisée / restant à faire
 
-- Écrans back-office parcourus en E2E : tableau de bord, commandes (liste, détail, acceptation), préparation, livraisons (affectation), espace livreur. Non parcourus en navigateur : édition du catalogue, contenus, paramètres, utilisateurs, paiements/remboursements, règlements livreurs (API couvertes par PHPUnit, écrans vérifiés par TypeScript/ESLint/build).
+- Tous les écrans du back-office et de l'espace livreur sont parcourus en E2E, sauf : catégories, avis, clients, journal d'audit, statistiques détaillées (API couvertes par PHPUnit et par le test « smoke » des endpoints).
+- Les sessions des comptes de démonstration sont ouvertes une seule fois par campagne (`auth.setup.ts`) : la limitation anti-force-brute de la connexion reste active.
 - Tests de charge (NFR-002) et restauration de sauvegarde (T-020) : non réalisés (dépendent de l'hébergement).
 - Accessibilité : l'audit automatique ne remplace pas un test avec lecteur d'écran (NVDA/TalkBack) par une personne, recommandé avant production.
 - Les tests E2E créent des commandes au prénom « E2E » dans la base de développement ; `global-teardown` les marque automatiquement `is_test = true` (`php artisan mk:flag-test-orders`).

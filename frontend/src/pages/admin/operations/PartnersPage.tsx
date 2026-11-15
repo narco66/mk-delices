@@ -2,7 +2,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Plus, Users } from 'lucide-react'
 import { useState } from 'react'
-import { useForm } from 'react-hook-form'
+import { useForm, useWatch } from 'react-hook-form'
 import { toast } from 'sonner'
 import { z } from 'zod'
 import { Button } from '@/components/ui/Button'
@@ -12,7 +12,7 @@ import { Checkbox, Field, Input, Select, Textarea } from '@/components/ui/Form'
 import { api, ApiError } from '@/lib/api'
 import { formatDateTime } from '@/lib/format'
 import type { Zone } from '@/types/api'
-import { TRANSPORT_LABELS } from '../orders/shared'
+import { TRANSPORT_LABELS } from '../orders/labels'
 
 interface Partner {
   id: string
@@ -117,7 +117,7 @@ function PartnerForm({ partner, onClose }: { partner: Partner | null; onClose: (
   })
   type Form = z.infer<typeof schema>
 
-  const { register, handleSubmit, formState, setError, watch, setValue } = useForm<Form>({
+  const { register, handleSubmit, formState, setError, control, setValue } = useForm<Form>({
     resolver: zodResolver(schema),
     defaultValues: {
       display_name: partner?.display_name ?? '',
@@ -131,7 +131,7 @@ function PartnerForm({ partner, onClose }: { partner: Partner | null; onClose: (
       zone_ids: partner?.zones.map((z) => z.id) ?? [],
     },
   })
-  const zoneIds = watch('zone_ids')
+  const zoneIds = useWatch({ control, name: 'zone_ids' })
 
   const save = useMutation({
     mutationFn: (v: Form) => {

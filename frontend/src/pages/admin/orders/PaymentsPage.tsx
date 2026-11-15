@@ -8,7 +8,8 @@ import { Field, Input, Select } from '@/components/ui/Form'
 import { api, toQuery } from '@/lib/api'
 import { formatDateTime, formatXof } from '@/lib/format'
 import type { Payment } from '@/types/api'
-import { PAYMENT_ATTEMPT_LABELS, Pagination, providerLabel, type PaginatedResponse } from './shared'
+import { Pagination, type PaginatedResponse } from './shared'
+import { PAYMENT_ATTEMPT_LABELS, providerLabel } from './labels'
 
 interface WebhookEventRow {
   id: string

@@ -12,9 +12,9 @@ import { useAdminCategories } from './useAdminCategories'
 import { api, toQuery } from '@/lib/api'
 import { formatXof } from '@/lib/format'
 import type { Paginated, Product } from '@/types/api'
+import { PRODUCT_STATUS_LABELS } from './labels'
 import { Pagination } from './shared'
 
-export const PRODUCT_STATUS_LABELS: Record<string, string> = { draft: 'Brouillon', published: 'Publié', inactive: 'Désactivé', archived: 'Archivé' }
 
 function priceRange(p: Product): string {
   const prices = (p.variants ?? []).filter((v) => !v.archived).map((v) => v.price_xof)

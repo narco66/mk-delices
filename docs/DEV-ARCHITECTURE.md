@@ -99,4 +99,6 @@ Internet ──HTTPS──▶ Nginx
 PHP-FPM ─▶ PostgreSQL (port non exposé) ; supervisor : queue:work ; cron : schedule:run
 ```
 
+Fichiers de configuration correspondants : dossier `deploy/` (Nginx, Supervisor, cron, scripts de sauvegarde/restauration/déploiement, modèle `env.production.example`).
+
 Variables à définir en production : `APP_ENV=production`, `APP_DEBUG=false`, `APP_URL`, `FRONTEND_URL`, `SESSION_DOMAIN`, `SESSION_SECURE_COOKIE=true`, `SANCTUM_STATEFUL_DOMAINS`, `SPA_INDEX_PATH`, `DB_*`, `MAIL_*`, `QUEUE_CONNECTION`, identifiants PSP. Compte administrateur : `php artisan mk:create-admin` (aucun mot de passe par défaut).

@@ -8,7 +8,8 @@ import { Field, Input, Select } from '@/components/ui/Form'
 import { api, toQuery } from '@/lib/api'
 import { CHANNEL_LABELS, formatDateTime, formatSlot, formatXof } from '@/lib/format'
 import type { AdminOrder } from '@/types/api'
-import { chip, ORDER_STATUS_LABELS, PAYMENT_STATUS_LABELS, Pagination, type PaginatedResponse } from './shared'
+import { Pagination, type PaginatedResponse } from './shared'
+import { chip, ORDER_STATUS_LABELS, PAYMENT_STATUS_LABELS } from './labels'
 
 const STATUS_FILTERS = ['draft', 'pending_confirmation', 'accepted', 'preparing', 'ready', 'assigned', 'picked_up', 'delivery_failed', 'delivered', 'cancelled', 'rejected']
 

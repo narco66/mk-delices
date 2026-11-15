@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle2, Circle, Clock, CreditCard, FlaskConical, Loader2, MessageCircle, PackageCheck, ShieldCheck, Star, XCircle } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { CheckCircle2, Circle, Clock, CreditCard, FlaskConical, Loader2, MessageCircle, PackageCheck, ShieldCheck, Star, Undo2, XCircle } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
 import { Button, buttonClass, ButtonLink } from '@/components/ui/Button'
@@ -242,25 +242,28 @@ export function PaymentReturnPage() {
   if (error || !order) return <OrderNotFound error={error} />
 
   const state = order.payment_status
+  // Chaque état financier a son message : seul « pending » signifie une vérification en cours.
+  const view: Record<string, { icon: ReactNode; title: string; text: string }> = {
+    paid: { icon: <CheckCircle2 className="mx-auto size-14 text-success-600" aria-hidden />, title: 'Paiement confirmé', text: 'Le prestataire a confirmé votre paiement. Merci !' },
+    failed: { icon: <XCircle className="mx-auto size-14 text-error-600" aria-hidden />, title: 'Paiement non abouti', text: 'Le paiement a échoué ou a été annulé. Votre commande est conservée : vous pouvez réessayer.' },
+    refunded: { icon: <Undo2 className="mx-auto size-14 text-cocoa-500" aria-hidden />, title: 'Commande remboursée', text: 'Le montant payé vous a été remboursé. Consultez le suivi de commande pour le détail.' },
+    partially_refunded: { icon: <Undo2 className="mx-auto size-14 text-cocoa-500" aria-hidden />, title: 'Remboursement partiel', text: 'Une partie du montant payé vous a été remboursée. Consultez le suivi de commande pour le détail.' },
+    unpaid: { icon: <Clock className="mx-auto size-14 text-caramel-600" aria-hidden />, title: 'Aucun paiement reçu', text: 'Aucun paiement n\'a été confirmé pour cette commande. Vous pouvez relancer le paiement depuis le suivi.' },
+  }
+  const current = view[state] ?? {
+    icon: <Loader2 className="mx-auto size-14 animate-spin text-caramel-600" aria-hidden />,
+    title: 'Paiement en vérification',
+    text: 'Nous attendons la confirmation du prestataire. Cette page se met à jour automatiquement ; vous pouvez aussi revenir plus tard via votre lien de suivi.',
+  }
   return (
     <div className="container-page max-w-xl py-16 text-center">
-      {state === 'paid' ? (
-        <CheckCircle2 className="mx-auto size-14 text-success-600" aria-hidden />
-      ) : state === 'failed' ? (
-        <XCircle className="mx-auto size-14 text-error-600" aria-hidden />
-      ) : (
-        <Loader2 className="mx-auto size-14 animate-spin text-caramel-600" aria-hidden />
-      )}
-      <h1 className="mt-5 text-3xl font-semibold">{state === 'paid' ? 'Paiement confirmé' : state === 'failed' ? 'Paiement non abouti' : 'Paiement en vérification'}</h1>
+      {current.icon}
+      <h1 className="mt-5 text-3xl font-semibold">{current.title}</h1>
       <p className="mt-3 text-cocoa-600" role="status">
-        {state === 'paid'
-          ? 'Le prestataire a confirmé votre paiement. Merci !'
-          : state === 'failed'
-            ? 'Le paiement a échoué ou a été annulé. Votre commande est conservée : vous pouvez réessayer.'
-            : 'Nous attendons la confirmation du prestataire. Cette page se met à jour automatiquement ; vous pouvez aussi revenir plus tard via votre lien de suivi.'}
+        {current.text}
       </p>
       <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-        {state === 'failed' && order.can_pay && <ButtonLink to={`/paiement/${reference}`}>Réessayer le paiement</ButtonLink>}
+        {(state === 'failed' || state === 'unpaid') && order.can_pay && <ButtonLink to={`/paiement/${reference}`}>Réessayer le paiement</ButtonLink>}
         <ButtonLink to={`/suivi/${reference}`} variant="secondary">
           Suivre ma commande
         </ButtonLink>

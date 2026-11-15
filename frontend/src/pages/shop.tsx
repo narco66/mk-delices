@@ -295,7 +295,7 @@ export function ProductPage() {
       </nav>
 
       <div className="grid gap-8 lg:grid-cols-2 lg:gap-14">
-        <div className="space-y-3 lg:sticky lg:top-24 lg:self-start">
+        <div className="min-w-0 space-y-3 lg:sticky lg:top-24 lg:self-start">
           <ProductVisual product={product} priority className="aspect-square rounded-[var(--radius-card)] shadow-soft" sizes="(min-width: 1024px) 50vw, 100vw" />
           {(product.images?.length ?? 0) > 1 && (
             <div className="grid grid-cols-4 gap-2">
@@ -306,7 +306,7 @@ export function ProductPage() {
           )}
         </div>
 
-        <div className="space-y-6">
+        <div className="min-w-0 space-y-6">
           <div>
             <div className="mb-3 flex flex-wrap gap-2">
               {product.is_signature && <Badge tone="cocoa">Signature MK</Badge>}
@@ -340,7 +340,7 @@ export function ProductPage() {
             {variant ? (
               <div className="flex items-center gap-3">
                 <QuantityStepper label="Quantité" value={qty} onChange={setQty} max={Math.max(1, maxQty)} />
-                <Button size="lg" className="flex-1" onClick={submit} loading={isMutating}>
+                <Button size="lg" className="min-w-0 flex-1" onClick={submit} loading={isMutating}>
                   Ajouter · <Price amount={variant.price_xof * qty} />
                 </Button>
               </div>

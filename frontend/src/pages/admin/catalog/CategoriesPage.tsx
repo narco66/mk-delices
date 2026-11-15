@@ -11,7 +11,8 @@ import { EmptyState, ErrorState, Skeleton } from '@/components/ui/Feedback'
 import { Field, Input, Textarea } from '@/components/ui/Form'
 import { api } from '@/lib/api'
 import type { Category } from '@/types/api'
-import { applyServerErrors, Toggle } from './shared'
+import { Toggle } from './shared'
+import { applyServerErrors } from './utils'
 import { useAdminCategories } from './useAdminCategories'
 
 const schema = z.object({

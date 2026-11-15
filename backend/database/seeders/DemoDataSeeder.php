@@ -14,7 +14,7 @@ use Illuminate\Database\Seeder;
 use RuntimeException;
 
 /**
- * JEU DE DÉMONSTRATION FICTIF — environnements local/testing uniquement.
+ * JEU DE DÉMONSTRATION FICTIF — environnements local/testing/staging (préproduction) uniquement.
  * Produits, prix, frais et comptes sont inventés et marqués is_demo=true : ils ne constituent
  * PAS le catalogue officiel de MK Délices (en attente, voir DEV-DECISIONS-A-VALIDER.md).
  */
@@ -24,8 +24,8 @@ class DemoDataSeeder extends Seeder
 
     public function run(): void
     {
-        if (! app()->environment(['local', 'testing'])) {
-            throw new RuntimeException('Le jeu de démonstration est interdit hors environnements local/testing.');
+        if (! app()->environment(['local', 'testing', 'staging'])) {
+            throw new RuntimeException('Le jeu de démonstration est interdit hors environnements local/testing/staging.');
         }
 
         $this->users();

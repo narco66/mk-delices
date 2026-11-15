@@ -29,7 +29,7 @@ use Illuminate\Support\Str;
 use RuntimeException;
 
 /**
- * ACTIVITÉ DE DÉMONSTRATION — environnements local/testing uniquement.
+ * ACTIVITÉ DE DÉMONSTRATION — environnements local/testing/staging (préproduction) uniquement.
  *
  * Génère, via les VRAIS services métier, 30 jours d'historique et des commandes du jour dans tous
  * les états : clients (invités et comptes), commandes, paiements (prestataire simulé), préparation,
@@ -78,8 +78,8 @@ class DemoActivitySeeder extends Seeder
 
     public function run(): void
     {
-        if (! app()->environment(['local', 'testing'])) {
-            throw new RuntimeException('Les données de démonstration sont interdites hors environnements local/testing.');
+        if (! app()->environment(['local', 'testing', 'staging'])) {
+            throw new RuntimeException('Les données de démonstration sont interdites hors environnements local/testing/staging.');
         }
         // Rejouable sans doublon : on ne s'arrête que si une génération est allée À SON TERME (journal d'audit).
         if (AuditLog::query()->where('action', 'demo.activity_generated')->exists()) {

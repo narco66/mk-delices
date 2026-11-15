@@ -16,7 +16,7 @@ return [
 
     'payments' => [
         // Simulateur réservé aux environnements local/testing : jamais actif en production.
-        'simulator_enabled' => (bool) env('PAYMENTS_SIMULATOR_ENABLED', false) && in_array(env('APP_ENV'), ['local', 'testing'], true),
+        'simulator_enabled' => (bool) env('PAYMENTS_SIMULATOR_ENABLED', false) && in_array(env('APP_ENV'), ['local', 'testing', 'staging'], true),
         'simulator_secret' => env('PAYMENTS_SIMULATOR_SECRET'),
         'wave' => [
             'api_key' => env('WAVE_API_KEY'),

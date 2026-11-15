@@ -12,7 +12,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 /**
- * Écran « prestataire » simulé (local/testing uniquement). Il émet un webhook SIGNÉ qui suit
+ * Écran « prestataire » simulé (local/testing/staging uniquement, jamais en production). Il émet un webhook SIGNÉ qui suit
  * exactement le même chemin de vérification qu'un webhook réel : aucun raccourci de confirmation.
  */
 class PaymentSimulatorController extends Controller

@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
 /**
- * Prestataire SIMULÉ — strictement réservé aux environnements local/testing (jamais en production).
+ * Prestataire SIMULÉ — strictement réservé aux environnements local/testing/staging (jamais en production).
  * Il reproduit le comportement d'un PSP : session, état côté prestataire, webhook signé HMAC-SHA256.
  * Aucun argent réel n'est concerné.
  */

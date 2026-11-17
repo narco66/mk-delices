@@ -190,6 +190,8 @@ export interface PublicOrder {
   can_cancel: boolean
   can_review: boolean
   invoices: InvoiceSummary[]
+  /** Code de remise à donner au livreur (tant que la commande n'est pas remise). */
+  delivery_code?: string | null
   created_at: string
   tracking_token?: string
 }
@@ -335,6 +337,8 @@ export interface AdminOrder {
   slot_end_at: string | null
   customer_notes: string | null
   internal_notes?: string | null
+  /** Code de remise (commercial uniquement) : à dicter au client d'une commande téléphone. */
+  delivery_code?: string | null
   details_locked: boolean
   is_test: boolean
   version: number
@@ -369,6 +373,8 @@ export interface Mission {
   items: { name: string; variant: string; qty: number; storage: string | null }[]
   requires_cold_chain: boolean
   cash_to_collect_xof: number
+  /** Essais de code de remise restants (5 au départ). */
+  code_attempts_left: number
   partner_fee_xof: number
   assigned_at: string | null
   accepted_at: string | null

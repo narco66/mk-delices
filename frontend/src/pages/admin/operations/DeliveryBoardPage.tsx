@@ -224,7 +224,7 @@ function AssignCard({ order, partners, canAssign, onDone }: { order: AdminOrder;
           <Select aria-label={`Livreur pour ${order.reference}`} value={partnerId} onChange={(e) => setPartnerId(e.target.value)} className="flex-1">
             <option value="">{eligible.length ? 'Choisir un livreur…' : 'Aucun livreur éligible'}</option>
             {eligible.map((p) => (
-              <option key={p.id} value={p.id}>
+              <option key={p.id} value={p.id} disabled={!p.available}>
                 {p.display_name}
                 {!p.available ? ' (indisponible)' : ''} · {p.active_missions} en cours
               </option>

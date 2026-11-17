@@ -1,0 +1,13 @@
+{
+  "name": "MK Délices — Livreur",
+  "short_name": "MK Livreur",
+  "description": "Missions de livraison MK Délices",
+  "id": "/livreur",
+  "start_url": "/livreur",
+  "scope": "/livreur",
+  "display": "standalone",
+  "lang": "fr",
+  "background_color": "#fffcf8",
+  "theme_color": "#5B342B",
+  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

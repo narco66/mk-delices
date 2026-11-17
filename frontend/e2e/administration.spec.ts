@@ -244,7 +244,10 @@ test('Scénario F : échec de livraison, décision du responsable, réaffectatio
   const fail = courier.getByRole('dialog')
   await fail.getByLabel('Motif').selectOption('client_absent')
   await fail.getByLabel('État du produit').selectOption('intact')
-  await fail.getByLabel("J'ai tenté de contacter le client").check()
+  // Sans contact ni attente déclarés, l'échec n'est pas rémunéré (décision du 17/11/2026) : avertissement affiché.
+  await expect(fail.getByText(/ne sera pas rémunérée/)).toBeVisible()
+  await fail.getByLabel(/J'ai appelé ou écrit au client et attendu/).check()
+  await expect(fail.getByText(/Course rémunérée à 50 %/)).toBeVisible()
   await fail.getByLabel('Précisions').fill('Portail fermé (test E2E)')
   await fail.getByRole('button', { name: "Déclarer l'échec" }).click()
   await expect(fail).toBeHidden()
@@ -261,7 +264,10 @@ test('Scénario F : échec de livraison, décision du responsable, réaffectatio
   await courier.getByRole('dialog').getByRole('checkbox').check()
   await courier.getByRole('dialog').getByRole('button', { name: 'Confirmer' }).click()
   await courier.getByRole('button', { name: 'Livrée' }).click()
-  await courier.getByLabel('Détail de la preuve').fill('Remis au gardien (test E2E)')
+  // Client sans son code : remise « sans code », signalée au commercial.
+  await courier.getByLabel('Type de preuve').selectOption('recipient_confirmation')
+  await expect(courier.getByText(/le commercial vérifiera la livraison/)).toBeVisible()
+  await courier.getByLabel('Nom de la personne qui reçoit').fill('Remis au gardien (test E2E)')
   await courier.getByRole('button', { name: 'Confirmer la livraison' }).click()
   await expect(courier.getByText(/Livrée :/)).toBeVisible()
 

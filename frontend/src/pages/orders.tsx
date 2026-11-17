@@ -437,6 +437,18 @@ export function TrackingPage() {
         </Card>
       </div>
 
+      {order.delivery_code && (
+        <Card className="mt-6 flex items-center justify-between gap-4 border-2 border-caramel-500 p-5">
+          <div>
+            <h2 className="font-semibold">Code de remise</h2>
+            <p className="text-sm text-cocoa-500">À donner au livreur à la réception de votre commande.</p>
+          </div>
+          <p className="font-display text-4xl tracking-[0.3em] tabular-nums" aria-label={`Code de remise ${order.delivery_code.split('').join(' ')}`}>
+            {order.delivery_code}
+          </p>
+        </Card>
+      )}
+
       <Card className="mt-6 p-6">
         <h2 className="flex items-center gap-2 font-semibold">
           <PackageCheck className="size-4 text-caramel-600" aria-hidden /> Articles

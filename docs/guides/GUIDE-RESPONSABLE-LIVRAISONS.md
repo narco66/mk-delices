@@ -9,13 +9,15 @@ Connexion : `https://<votre-site>/connexion`, puis menu **Livraisons**.
 
 ## 2. Affecter une commande
 Dans **Livraisons**, la section « À affecter » liste les commandes **prêtes** (et celles en échec de livraison).
-1. Dans la liste déroulante de la commande, choisissez un livreur. Seuls les livreurs **actifs et éligibles à la zone** sont proposés, avec leur nombre de missions en cours.
+1. Dans la liste déroulante de la commande, choisissez un livreur. Seuls les livreurs **actifs et éligibles à la zone** sont proposés, avec leur nombre de missions en cours ; ceux qui se sont déclarés **indisponibles** apparaissent grisés et ne peuvent pas être choisis.
 2. Cliquez sur **Affecter**. Le livreur voit la mission « proposée » sur son téléphone.
 3. Quand il **accepte**, la commande passe « Confiée au livreur » et il voit alors l'adresse et le téléphone du client.
 
 Une commande ne peut avoir qu'**une seule mission active** : une deuxième affectation est refusée.
 Si un livreur **refuse** (avec motif), la commande redevient disponible : réaffectez-la.
 Pour retirer une mission **avant l'enlèvement** (livreur indisponible), utilisez **Retirer la mission** avec un motif.
+Le livreur peut aussi **rendre** lui-même une mission acceptée avant l'enlèvement (panne, urgence) : vous recevez une notification « Commande prête : à affecter » et la commande réapparaît dans « À affecter ».
+**Mission sans réponse :** si un livreur n'a pas accepté une mission au bout de **10 minutes** (réglable : Paramètres › `delivery.accept_timeout_minutes`), vous recevez une notification « Mission non acceptée » : relancez-le ou retirez la mission pour la confier à un autre livreur.
 
 ## 3. Incidents de livraison
 Quand un livreur déclare un **échec** (client absent, adresse introuvable, client injoignable, refus, produit endommagé…), la commande apparaît dans **Incidents à traiter** avec :

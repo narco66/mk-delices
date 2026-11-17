@@ -18,7 +18,15 @@ class Order extends Model
 
     protected $guarded = ['id'];
 
-    protected $hidden = ['tracking_token_hash'];
+    protected $hidden = ['tracking_token_hash', 'delivery_code'];
+
+    protected static function booted(): void
+    {
+        // Code de remise à 4 chiffres (décision du 17/11/2026), à donner au livreur à la réception.
+        static::creating(function (Order $order) {
+            $order->delivery_code ??= str_pad((string) random_int(0, 9999), 4, '0', STR_PAD_LEFT);
+        });
+    }
 
     protected function casts(): array
     {

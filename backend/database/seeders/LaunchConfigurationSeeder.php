@@ -55,7 +55,8 @@ class LaunchConfigurationSeeder extends Seeder
             'ordering.max_qty_per_line' => 20,
             'ordering.pickup_enabled' => false,
             'quality.cold_chain_max_minutes' => 30,
-            'delivery.proof_types' => ['recipient_confirmation', 'code'],
+            // Code de remise d'abord ; « confirmation du destinataire » = remise sans code, signalée au commercial.
+            'delivery.proof_types' => ['code', 'recipient_confirmation'],
             'payments.require_payment_before_acceptance' => true,
             'delivery.failed_fee_percent' => 50,
             'delivery.client_fault_reasons' => ['client_absent', 'client_injoignable', 'refus_client'],

@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Bike, ChevronRight, Clock, MapPin, Snowflake } from 'lucide-react'
+import { useState } from 'react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
 import { Badge, Card, StatusPill } from '@/components/ui/Display'
@@ -8,6 +9,7 @@ import { api } from '@/lib/api'
 import { cn } from '@/lib/cn'
 import { formatDateTime, formatSlot, formatXof } from '@/lib/format'
 import type { Mission } from '@/types/api'
+import { PushOptIn } from './PushOptIn'
 import { useCourierOverview } from './useCourier'
 
 export function MissionsPage() {
@@ -42,6 +44,8 @@ export function MissionsPage() {
         <h1 className="text-2xl font-semibold">{data.partner.display_name}</h1>
       </div>
 
+      <PushOptIn publicKey={data.push_public_key} />
+
       <div className="grid grid-cols-2 gap-3">
         <button
           type="button"
@@ -59,6 +63,12 @@ export function MissionsPage() {
           <span className="text-lg font-semibold tabular-nums">{formatXof(data.amount_due_xof)}</span>
         </Card>
       </div>
+      {data.cash_to_hand_over_xof > 0 && (
+        <Card className="flex items-center justify-between gap-3 border-l-4 border-warning-600 px-4 py-3">
+          <span className="text-sm font-semibold">Espèces à remettre à MK Délices</span>
+          <span className="text-lg font-semibold tabular-nums">{formatXof(data.cash_to_hand_over_xof)}</span>
+        </Card>
+      )}
 
       <section aria-labelledby="active">
         <h2 id="active" className="mb-3 text-lg font-semibold">
@@ -124,6 +134,7 @@ function MissionCard({ mission: m, highlight }: { mission: Mission; highlight: b
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
           <StatusPill status={m.status} label={m.status === 'proposed' ? 'Nouvelle mission' : m.status_label} />
+          <SlotBadge start={m.slot_start_at} end={m.slot_end_at} />
           {m.requires_cold_chain && (
             <Badge tone="cocoa">
               <Snowflake className="size-3" /> Froid
@@ -134,4 +145,15 @@ function MissionCard({ mission: m, highlight }: { mission: Mission; highlight: b
       </Card>
     </Link>
   )
+}
+
+/** Créneau dépassé ou imminent (audit espace livreur F1). L'heure est relue à chaque rafraîchissement de la liste. */
+function SlotBadge({ start, end }: { start: string | null; end: string | null }) {
+  const [now] = useState(() => Date.now())
+  if (!start || !end) return null
+  const toStart = (Date.parse(start) - now) / 60_000
+  const toEnd = (Date.parse(end) - now) / 60_000
+  if (toEnd < 0) return <Badge tone="error">En retard</Badge>
+  if (toStart <= 60) return <Badge tone="warning">{toStart <= 0 ? 'Créneau en cours' : `Dans ${Math.max(1, Math.round(toStart))} min`}</Badge>
+  return null
 }

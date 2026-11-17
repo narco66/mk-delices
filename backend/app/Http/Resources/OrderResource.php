@@ -52,6 +52,8 @@ class OrderResource extends JsonResource
             'slot_end_at' => $this->slot_end_at?->toIso8601ZuluString(),
             'customer_notes' => $this->customer_notes,
             'internal_notes' => $this->when($user?->can('orders.view'), $this->internal_notes),
+            // Pour le dicter au client d'une commande téléphone ; jamais montré au livreur ni au préparateur.
+            'delivery_code' => $this->when($user?->can('orders.view'), $this->delivery_code),
             'details_locked' => $this->details_locked,
             'is_test' => $this->is_test,
             'version' => $this->version,

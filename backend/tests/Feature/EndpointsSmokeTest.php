@@ -23,7 +23,7 @@ class EndpointsSmokeTest extends TestCase
             $id = $this->actingAs($manager)->postJson('/api/v1/admin/delivery/assignments', ['order_id' => $order->id, 'partner_id' => $partner->id])->assertCreated()->json('data.id');
             $this->actingAs($partner->user)->postJson("/api/v1/courier/missions/{$id}/actions", ['action' => 'accept'])->assertOk();
             $this->postJson("/api/v1/courier/missions/{$id}/actions", ['action' => 'pick_up', 'packaging_checked' => true])->assertOk();
-            $this->postJson("/api/v1/courier/missions/{$id}/actions", ['action' => 'deliver', 'proof_type' => 'code', 'proof_reference' => '1234'])->assertOk();
+            $this->postJson("/api/v1/courier/missions/{$id}/actions", ['action' => 'deliver', 'proof_type' => 'code', 'proof_reference' => $order->fresh()->delivery_code])->assertOk();
             Review::query()->create(['order_id' => $order->id, 'product_id' => $order->items()->value('product_id'), 'author_name' => 'A', 'stars' => 5, 'moderation_status' => 'approved']);
         }
         $this->createOrder(null, $zone);

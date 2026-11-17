@@ -2,6 +2,7 @@
 
 namespace App\Domain\Deliveries;
 
+use App\Domain\Deliveries\Push\CourierPushNotifier;
 use App\Domain\Orders\OrderJournal;
 use App\Domain\Orders\OrderPaymentStatus;
 use App\Domain\Orders\OrderStateMachine;
@@ -11,15 +12,20 @@ use App\Domain\Payments\PaymentStatus;
 use App\Domain\Shared\AuditLogger;
 use App\Domain\Shared\DomainException;
 use App\Domain\Shared\Settings;
+use App\Jobs\NotifyCourierOfMission;
 use App\Models\DeliveryAssignment;
 use App\Models\DeliveryPartner;
+use App\Models\NotificationLog;
 use App\Models\Order;
 use App\Models\Payment;
 use App\Models\User;
+use App\Notifications\StaffOrderActivity;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Str;
 
 /**
  * Missions de livraison : une seule mission active par commande (index unique partiel + verrou),
@@ -27,7 +33,7 @@ use Illuminate\Support\Facades\Log;
  */
 class DeliveryService
 {
-    public const COURIER_ACTIONS = ['accept', 'refuse', 'pick_up', 'deliver', 'fail'];
+    public const COURIER_ACTIONS = ['accept', 'refuse', 'release', 'pick_up', 'deliver', 'fail'];
 
     public function __construct(
         private readonly OrderStateMachine $orders,
@@ -58,6 +64,10 @@ class DeliveryService
                 if (! $partner->active || ! $partner->user?->is_active) {
                     throw DomainException::unprocessable('partner_inactive', 'Ce livreur n\'est pas actif.');
                 }
+                // Audit espace livreur E2 : un livreur qui s'est déclaré indisponible ne reçoit pas de mission.
+                if (! $partner->available) {
+                    throw DomainException::unprocessable('partner_unavailable', "{$partner->display_name} s'est déclaré indisponible : choisissez un autre livreur.");
+                }
                 if ($locked->zone_id && ! $partner->zones()->whereKey($locked->zone_id)->exists()) {
                     throw DomainException::unprocessable('partner_not_eligible', 'Ce livreur ne dessert pas la zone de la commande.');
                 }
@@ -75,6 +85,10 @@ class DeliveryService
                 ]);
                 $this->journal->record($locked, 'delivery', $actor, null, ['event' => 'delivery.proposed', 'assignment_id' => $assignment->id, 'partner' => $partner->display_name]);
                 $this->audit->log('delivery.assigned', $assignment, null, ['order' => $locked->reference, 'partner_id' => $partner->id]);
+                // Notification du navigateur au livreur (s'il l'a activée), seulement si l'affectation est validée.
+                if (CourierPushNotifier::enabled()) {
+                    DB::afterCommit(fn () => NotifyCourierOfMission::dispatch($assignment->id));
+                }
 
                 return $assignment;
             });
@@ -122,7 +136,7 @@ class DeliveryService
                 throw DomainException::forbidden('Cette mission ne vous est pas affectée.');
             }
             $expected = [
-                'accept' => AssignmentStatus::Proposed, 'refuse' => AssignmentStatus::Proposed,
+                'accept' => AssignmentStatus::Proposed, 'refuse' => AssignmentStatus::Proposed, 'release' => AssignmentStatus::Accepted,
                 'pick_up' => AssignmentStatus::Accepted, 'deliver' => AssignmentStatus::PickedUp, 'fail' => AssignmentStatus::PickedUp,
             ][$action];
             if ($mission->status !== $expected) {
@@ -132,6 +146,7 @@ class DeliveryService
             match ($action) {
                 'accept' => $this->accept($mission, $order, $courier),
                 'refuse' => $this->refuse($mission, $order, $courier, $data),
+                'release' => $this->release($mission, $order, $courier, $data),
                 'pick_up' => $this->pickUp($mission, $order, $courier, $data),
                 'deliver' => $this->deliver($mission, $order, $courier, $data),
                 'fail' => $this->fail($mission, $order, $courier, $data),
@@ -179,6 +194,52 @@ class DeliveryService
         $this->journal->record($order, 'delivery', $courier, $reason, ['event' => 'delivery.refused', 'assignment_id' => $mission->id]);
     }
 
+    /**
+     * Audit espace livreur M1 : le livreur rend une mission acceptée mais pas encore enlevée (panne, urgence).
+     * La commande redevient « prête » : le responsable des livraisons est notifié et peut réaffecter.
+     */
+    private function release(DeliveryAssignment $mission, Order $order, User $courier, array $data): void
+    {
+        $reason = trim((string) ($data['reason'] ?? ''));
+        if (mb_strlen($reason) < 3) {
+            throw DomainException::unprocessable('reason_required', 'Indiquez pourquoi vous ne pouvez plus assurer la mission.');
+        }
+        $mission->update(['status' => AssignmentStatus::Cancelled, 'closed_at' => now(), 'cancel_reason' => mb_substr('Rendue par le livreur : '.$reason, 0, 300)]);
+        $this->orders->system($order, OrderStatus::Ready, $courier, $reason, ['event' => 'delivery.released', 'assignment_id' => $mission->id]);
+        $this->journal->record($order, 'delivery', $courier, $reason, ['event' => 'delivery.released', 'assignment_id' => $mission->id]);
+    }
+
+    /**
+     * Audit espace livreur E1 : missions proposées et restées sans réponse au-delà du délai paramétré.
+     * Le responsable des livraisons est alerté UNE fois par mission (anti-doublon du journal de notifications).
+     *
+     * @return int nombre d'alertes envoyées
+     */
+    public function alertUnacceptedProposals(): int
+    {
+        $minutes = (int) $this->settings->get('delivery.accept_timeout_minutes', 10);
+        if ($minutes <= 0) {
+            return 0;
+        }
+        $stale = DeliveryAssignment::query()->with(['order', 'partner'])
+            ->where('status', AssignmentStatus::Proposed->value)
+            ->where('assigned_at', '<', now()->subMinutes($minutes))->get();
+        $sent = 0;
+        foreach ($stale as $mission) {
+            $claimed = NotificationLog::query()->insertOrIgnore([
+                'id' => (string) Str::uuid(), 'order_id' => $mission->order_id, 'event' => 'staff:delivery.not_accepted',
+                'channel' => 'database', 'dedupe_key' => "assignment:{$mission->id}:not_accepted", 'delivery_status' => 'sent',
+                'sent_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+            ]);
+            if ($claimed === 1) {
+                Notification::send(User::role([User::ROLE_RESP_LIVRAISON])->where('is_active', true)->get(), new StaffOrderActivity($mission->order, 'delivery.not_accepted'));
+                $sent++;
+            }
+        }
+
+        return $sent;
+    }
+
     private function pickUp(DeliveryAssignment $mission, Order $order, User $courier, array $data): void
     {
         if (empty($data['packaging_checked'])) {
@@ -186,6 +247,58 @@ class DeliveryService
         }
         $mission->update(['status' => AssignmentStatus::PickedUp, 'picked_up_at' => now(), 'packaging_checked' => true]);
         $this->orders->system($order, OrderStatus::PickedUp, $courier, null, ['event' => 'delivery.picked_up', 'assignment_id' => $mission->id]);
+    }
+
+    /** Nombre d'essais de code erronés au-delà duquel la saisie est bloquée pour la mission. */
+    public const MAX_CODE_ATTEMPTS = 5;
+
+    /**
+     * Vérifie le code de remise saisi par le livreur. Un essai erroné est compté et ENREGISTRÉ (transaction propre,
+     * validée avant l'erreur renvoyée) ; au 5e, la saisie est bloquée et le responsable des livraisons alerté.
+     */
+    public function verifyDeliveryCode(DeliveryAssignment $assignment, User $courier, string $code): void
+    {
+        $result = DB::transaction(function () use ($assignment, $courier, $code) {
+            $mission = DeliveryAssignment::query()->with(['order', 'partner'])->lockForUpdate()->findOrFail($assignment->id);
+            if ($mission->partner->user_id !== $courier->id) {
+                throw DomainException::forbidden('Cette mission ne vous est pas affectée.');
+            }
+            if ($mission->code_failed_attempts >= self::MAX_CODE_ATTEMPTS) {
+                return 'locked';
+            }
+            $expected = (string) $mission->order->delivery_code;
+            if ($expected !== '' && hash_equals($expected, trim($code))) {
+                return 'ok';
+            }
+            $mission->increment('code_failed_attempts');
+            $this->journal->record($mission->order, 'delivery', $courier, null, ['event' => 'delivery.code_invalid', 'assignment_id' => $mission->id, 'attempt' => $mission->code_failed_attempts]);
+            if ($mission->code_failed_attempts >= self::MAX_CODE_ATTEMPTS) {
+                DB::afterCommit(fn () => $this->alertStaff($mission->order, "assignment:{$mission->id}:code_locked", 'delivery.code_locked', [User::ROLE_RESP_LIVRAISON]));
+
+                return 'locked';
+            }
+
+            return self::MAX_CODE_ATTEMPTS - $mission->code_failed_attempts;
+        });
+
+        if ($result === 'locked') {
+            throw DomainException::conflict('delivery_code_locked', 'Trop de codes erronés : saisie bloquée. Remettez la commande « sans code » en notant le nom du destinataire, ou appelez le responsable.');
+        }
+        if ($result !== 'ok') {
+            throw DomainException::unprocessable('delivery_code_invalid', "Code incorrect. Il vous reste {$result} essai(s).", ['remaining_attempts' => $result]);
+        }
+    }
+
+    /** Notification interne unique (anti-doublon par clé) aux rôles indiqués. */
+    private function alertStaff(Order $order, string $dedupeKey, string $event, array $roles): void
+    {
+        $claimed = NotificationLog::query()->insertOrIgnore([
+            'id' => (string) Str::uuid(), 'order_id' => $order->id, 'event' => "staff:{$event}", 'channel' => 'database',
+            'dedupe_key' => $dedupeKey, 'delivery_status' => 'sent', 'sent_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        if ($claimed === 1) {
+            Notification::send(User::role($roles)->where('is_active', true)->get(), new StaffOrderActivity($order, $event));
+        }
     }
 
     private function deliver(DeliveryAssignment $mission, Order $order, User $courier, array $data): void
@@ -201,6 +314,11 @@ class DeliveryService
                 throw DomainException::unprocessable('cash_amount_required', 'Indiquez le montant encaissé auprès du client.');
             }
         }
+        $codeEnabled = (bool) $this->settings->get('delivery.code_enabled', false);
+        // Le code a été vérifié (et l'essai compté) avant la transaction ; contrôle de cohérence sans recompter.
+        if ($codeEnabled && $data['proof_type'] === 'code' && ! hash_equals((string) $order->delivery_code, trim((string) $data['proof_reference']))) {
+            throw DomainException::unprocessable('delivery_code_invalid', 'Code de remise incorrect.');
+        }
         $mission->update([
             'status' => AssignmentStatus::Delivered,
             'delivered_at' => now(),
@@ -211,6 +329,11 @@ class DeliveryService
         ]);
         $this->recordCashCollected($mission, $order, $courier, (int) $cash);
         $this->orders->system($order, OrderStatus::Delivered, $courier, null, ['event' => 'delivery.delivered', 'assignment_id' => $mission->id, 'proof_type' => $data['proof_type']]);
+        // Remise sans code : acceptée pour ne jamais bloquer un produit frais, mais vérifiée par le commercial.
+        if ($codeEnabled && $data['proof_type'] !== 'code') {
+            $this->journal->record($order, 'delivery', $courier, (string) $data['proof_reference'], ['event' => 'delivery.without_code', 'assignment_id' => $mission->id]);
+            DB::afterCommit(fn () => $this->alertStaff($order, "assignment:{$mission->id}:without_code", 'delivery.without_code', [User::ROLE_COMMERCIAL]));
+        }
     }
 
     /**
@@ -252,7 +375,10 @@ class DeliveryService
         }
         // Course échouée : rémunérée à X % si l'échec est dû au client (règle validée le 15/11/2026), sinon non due.
         $clientFault = in_array($data['incident_reason'], (array) $this->settings->get('delivery.client_fault_reasons', []), true);
-        $percent = $clientFault ? max(0, min(100, (int) $this->settings->get('delivery.failed_fee_percent', 0))) : 0;
+        // Décision MK Délices (17/11/2026) : les 50 % ne sont dus que si le livreur déclare avoir contacté le client
+        // ET attendu sur place le délai paramétré ; sinon la course échouée n'est pas rémunérée.
+        $contacted = (bool) ($data['contact_attempted'] ?? false);
+        $percent = $clientFault && $contacted ? max(0, min(100, (int) $this->settings->get('delivery.failed_fee_percent', 0))) : 0;
         $fee = intdiv($mission->partner_fee_xof * $percent, 100);
         $mission->update([
             'status' => AssignmentStatus::Failed,

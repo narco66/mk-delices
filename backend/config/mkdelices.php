@@ -22,6 +22,18 @@ return [
         'backup_status_file' => env('HEALTH_BACKUP_STATUS_FILE'),
     ],
 
+    // Notifications du navigateur aux livreurs (web push). Clés générées par `php artisan mk:vapid-keys` ;
+    // sans clés, la fonction est simplement désactivée (aucun bouton « Activer les notifications »).
+    'push' => [
+        'vapid_public_key' => env('WEB_PUSH_VAPID_PUBLIC_KEY'),
+        'vapid_private_key' => env('WEB_PUSH_VAPID_PRIVATE_KEY'),
+        // Contact transmis aux services de notification (Google, Mozilla, Apple) en cas d'abus.
+        'subject' => env('WEB_PUSH_SUBJECT', 'mailto:'.env('MAIL_FROM_ADDRESS', 'contact@example.com')),
+        // Services de notification acceptés pour l'adresse d'abonnement (évite d'envoyer des requêtes vers
+        // n'importe quel serveur à partir d'une adresse fournie par le navigateur).
+        'allowed_hosts' => ['fcm.googleapis.com', '*.push.services.mozilla.com', '*.notify.windows.com', '*.push.apple.com', 'web.push.apple.com'],
+    ],
+
     'payments' => [
         // Simulateur réservé aux environnements local/testing : jamais actif en production.
         'simulator_enabled' => (bool) env('PAYMENTS_SIMULATOR_ENABLED', false) && in_array(env('APP_ENV'), ['local', 'testing', 'staging'], true),
@@ -72,6 +84,9 @@ return [
         'policies.cancellation' => ['policies', null, true, true, 'Politique d\'annulation et de remboursement (à rédiger et valider)'],
         'delivery.proof_types' => ['delivery', ['recipient_confirmation', 'photo_reference', 'code'], false, true, 'Types de preuve de remise acceptés'],
         'delivery.incident_reasons' => ['delivery', ['client_absent', 'adresse_introuvable', 'client_injoignable', 'refus_client', 'produit_endommage', 'autre'], false, false, 'Motifs d\'échec de livraison'],
+        'delivery.client_fault_min_wait_minutes' => ['delivery', 10, false, true, 'Attente minimale sur place (minutes) que le livreur doit déclarer, avec une tentative de contact, pour être payé en cas d’échec dû au client'],
+        'delivery.code_enabled' => ['delivery', true, true, true, 'Code de remise à 4 chiffres demandé au client à la livraison (la remise sans code reste possible et est signalée au commercial)'],
+        'delivery.accept_timeout_minutes' => ['delivery', 10, false, false, 'Délai (minutes) au-delà duquel une mission proposée et non acceptée est signalée au responsable (0 = jamais)'],
         'delivery.failed_fee_percent' => ['delivery', 50, false, true, 'Part de la rémunération due au livreur pour une course échouée par la faute du client (%)'],
         'delivery.client_fault_reasons' => ['delivery', ['client_absent', 'client_injoignable', 'refus_client'], false, true, 'Motifs d’échec considérés comme dus au client (course rémunérée au pourcentage ci-dessus)'],
         // Facturation : les prix affichés sont TTC ; la TVA (si applicable) est extraite du prix TTC.

@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Domain\Deliveries\AssignmentStatus;
+use App\Domain\Deliveries\DeliveryService;
 use App\Models\DeliveryAssignment;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -40,6 +41,7 @@ class MissionResource extends JsonResource
             'items' => $order->items->map(fn ($i) => ['name' => $i->product_name_snapshot, 'variant' => $i->variant_label_snapshot, 'qty' => $i->qty, 'storage' => $i->storage_snapshot]),
             'requires_cold_chain' => $order->items->contains(fn ($i) => (bool) $i->product?->requires_cold_chain),
             'cash_to_collect_xof' => $this->cash_to_collect_xof,
+            'code_attempts_left' => max(0, DeliveryService::MAX_CODE_ATTEMPTS - (int) $this->code_failed_attempts),
             'partner_fee_xof' => $this->partner_fee_xof,
             'assigned_at' => $this->assigned_at?->toIso8601ZuluString(),
             'accepted_at' => $this->accepted_at?->toIso8601ZuluString(),
@@ -51,7 +53,7 @@ class MissionResource extends JsonResource
             'settled_at' => $this->settled_at?->toIso8601ZuluString(),
             'available_actions' => match ($this->status) {
                 AssignmentStatus::Proposed => ['accept', 'refuse'],
-                AssignmentStatus::Accepted => ['pick_up'],
+                AssignmentStatus::Accepted => ['pick_up', 'release'],
                 AssignmentStatus::PickedUp => ['deliver', 'fail'],
                 default => [],
             },

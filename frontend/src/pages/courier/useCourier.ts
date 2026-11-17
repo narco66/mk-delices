@@ -8,7 +8,15 @@ export interface CourierOverview {
   history: Mission[]
   proof_types: string[]
   incident_reasons: string[]
+  client_fault_reasons: string[]
+  client_fault_min_wait_minutes: number
+  failed_fee_percent: number
+  delivery_code_enabled: boolean
+  /** Clé publique des notifications du navigateur (null = non configurées sur le serveur). */
+  push_public_key: string | null
   amount_due_xof: number
+  /** Espèces encaissées pas encore remises à MK Délices. */
+  cash_to_hand_over_xof: number
 }
 
 export function useCourierOverview() {

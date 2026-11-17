@@ -1,8 +1,8 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Map as MapIcon, Phone, Snowflake } from 'lucide-react'
+import { ArrowLeft, Map as MapIcon, MessageCircle, Phone, Snowflake } from 'lucide-react'
 import { useState } from 'react'
-import { useForm } from 'react-hook-form'
+import { useForm, useWatch } from 'react-hook-form'
 import { Link, useParams } from 'react-router'
 import { toast } from 'sonner'
 import { z } from 'zod'
@@ -16,7 +16,7 @@ import type { Mission } from '@/types/api'
 import { CONDITION_LABELS, INCIDENT_LABELS, PROOF_LABELS } from '../admin/orders/labels'
 import { mapsUrl, useCourierOverview } from './useCourier'
 
-type Action = 'accept' | 'refuse' | 'pick_up' | 'deliver' | 'fail'
+type Action = 'accept' | 'refuse' | 'release' | 'pick_up' | 'deliver' | 'fail'
 
 export function MissionDetailPage() {
   const { id = '' } = useParams()
@@ -27,14 +27,19 @@ export function MissionDetailPage() {
   const { data: mission, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['courier', 'mission', id],
     queryFn: async () => (await api.get<{ data: Mission }>(`/courier/missions/${id}`)).data,
+    refetchInterval: 30_000, // mission retirée ou modifiée par le responsable : visible sans action
   })
 
   const act = useMutation({
     mutationFn: (body: Record<string, unknown>) => api.post<{ data: Mission }>(`/courier/missions/${id}/actions`, body),
+    // Réseau instable : 2 nouvelles tentatives sur coupure (sans risque : le serveur refuse une action déjà faite).
+    retry: (count, e) => e instanceof ApiError && e.status === 0 && count < 2,
+    retryDelay: 2_000,
     onSuccess: (res, body) => {
       const messages: Record<string, string> = {
         accept: 'Mission acceptée',
         refuse: 'Mission refusée',
+        release: 'Mission rendue : le responsable est prévenu',
         pick_up: 'Enlèvement confirmé',
         deliver: 'Livraison confirmée, merci !',
         fail: 'Incident déclaré',
@@ -45,8 +50,10 @@ export function MissionDetailPage() {
       setDialog(null)
     },
     onError: (e) => {
-      toast.error(errorMessage(e))
-      if (e instanceof ApiError && e.status === 409) refetch()
+      if (e instanceof ApiError && e.status === 0) toast.error('Pas de réseau : action non enregistrée. Réessayez dès que la connexion revient.')
+      else toast.error(errorMessage(e))
+      // Conflit : la mission a changé (peut-être déjà enregistrée lors d'une coupure) → on affiche son état réel.
+      if (e instanceof ApiError && (e.status === 409 || e.status === 0)) refetch()
     },
   })
 
@@ -95,10 +102,15 @@ export function MissionDetailPage() {
         {mission.landmark && <p className="text-sm text-cocoa-700">Repère : {mission.landmark}</p>}
         {mission.customer_notes && <p className="rounded bg-warning-50 px-3 py-2 text-sm text-warning-600">Consignes : {mission.customer_notes}</p>}
         {(mission.recipient_phone || maps) && (
-          <div className="grid grid-cols-2 gap-2 pt-1">
+          <div className="grid grid-cols-2 gap-2 pt-1 [&>*:last-child:nth-child(odd)]:col-span-2">
             {mission.recipient_phone && (
               <a href={`tel:${mission.recipient_phone}`} className={buttonClass('secondary', 'lg', 'w-full')}>
                 <Phone className="size-5" /> Appeler
+              </a>
+            )}
+            {mission.recipient_phone && (
+              <a href={`https://wa.me/${mission.recipient_phone.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" className={buttonClass('secondary', 'lg', 'w-full')}>
+                <MessageCircle className="size-5 text-[#1f7a4d]" /> WhatsApp
               </a>
             )}
             {maps && (
@@ -159,8 +171,13 @@ export function MissionDetailPage() {
                 </Button>
               </>
             )}
+            {actions.includes('release') && (
+              <Button variant="secondary" size="lg" className="flex-1" onClick={() => setDialog('release')}>
+                Rendre
+              </Button>
+            )}
             {actions.includes('pick_up') && (
-              <Button size="lg" className="flex-1" onClick={() => setDialog('pick_up')}>
+              <Button size="lg" className="flex-[2]" onClick={() => setDialog('pick_up')}>
                 Confirmer l'enlèvement
               </Button>
             )}
@@ -179,17 +196,41 @@ export function MissionDetailPage() {
       )}
 
       {dialog === 'refuse' && <RefuseDialog loading={act.isPending} onClose={() => setDialog(null)} onSubmit={(reason) => act.mutate({ action: 'refuse', reason })} />}
+      {dialog === 'release' && (
+        <RefuseDialog
+          title="Rendre la mission"
+          label="Rendre la mission"
+          placeholder="Ex. panne, accident, urgence…"
+          help="La commande redevient disponible et le responsable des livraisons est prévenu pour la confier à un autre livreur."
+          loading={act.isPending}
+          onClose={() => setDialog(null)}
+          onSubmit={(reason) => act.mutate({ action: 'release', reason })}
+        />
+      )}
       {dialog === 'pick_up' && <PickUpDialog cold={mission.requires_cold_chain} loading={act.isPending} onClose={() => setDialog(null)} onSubmit={() => act.mutate({ action: 'pick_up', packaging_checked: true })} />}
       {dialog === 'deliver' && (
         <DeliverDialog
+          key={(overview.data?.proof_types ?? []).join(',')}
           proofTypes={overview.data?.proof_types ?? []}
+          codeEnabled={overview.data?.delivery_code_enabled ?? false}
+          attemptsLeft={mission.code_attempts_left}
           cashDue={mission.cash_to_collect_xof}
           loading={act.isPending}
           onClose={() => setDialog(null)}
           onSubmit={(body) => act.mutate({ action: 'deliver', ...body })}
         />
       )}
-      {dialog === 'fail' && <FailDialog reasons={overview.data?.incident_reasons ?? []} loading={act.isPending} onClose={() => setDialog(null)} onSubmit={(body) => act.mutate({ action: 'fail', ...body })} />}
+      {dialog === 'fail' && (
+        <FailDialog
+          reasons={overview.data?.incident_reasons ?? []}
+          clientFaultReasons={overview.data?.client_fault_reasons ?? []}
+          minWait={overview.data?.client_fault_min_wait_minutes ?? 10}
+          feePercent={overview.data?.failed_fee_percent ?? 0}
+          loading={act.isPending}
+          onClose={() => setDialog(null)}
+          onSubmit={(body) => act.mutate({ action: 'fail', ...body })}
+        />
+      )}
     </div>
   )
 }
@@ -215,12 +256,28 @@ function DialogFooter({ onClose, onConfirm, loading, disabled, label }: { onClos
   )
 }
 
-function RefuseDialog({ loading, onClose, onSubmit }: { loading: boolean; onClose: () => void; onSubmit: (reason: string) => void }) {
+function RefuseDialog({
+  loading,
+  onClose,
+  onSubmit,
+  title = 'Refuser la mission',
+  label = 'Refuser',
+  placeholder = 'Ex. panne, zone trop éloignée…',
+  help,
+}: {
+  loading: boolean
+  onClose: () => void
+  onSubmit: (reason: string) => void
+  title?: string
+  label?: string
+  placeholder?: string
+  help?: string
+}) {
   const [reason, setReason] = useState('')
   return (
-    <Modal open onOpenChange={(o) => !o && onClose()} title="Refuser la mission" footer={<DialogFooter onClose={onClose} loading={loading} disabled={reason.trim().length < 3} label="Refuser" onConfirm={() => onSubmit(reason.trim())} />}>
-      <Field label="Motif du refus" required>
-        {(p) => <Textarea {...p} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Ex. panne, zone trop éloignée…" />}
+    <Modal open onOpenChange={(o) => !o && onClose()} title={title} description={help} footer={<DialogFooter onClose={onClose} loading={loading} disabled={reason.trim().length < 3} label={label} onConfirm={() => onSubmit(reason.trim())} />}>
+      <Field label="Motif" required>
+        {(p) => <Textarea {...p} value={reason} onChange={(e) => setReason(e.target.value)} placeholder={placeholder} />}
       </Field>
     </Modal>
   )
@@ -239,17 +296,37 @@ function PickUpDialog({ cold, loading, onClose, onSubmit }: { cold: boolean; loa
   )
 }
 
-function DeliverDialog({ proofTypes, cashDue, loading, onClose, onSubmit }: { proofTypes: string[]; cashDue: number; loading: boolean; onClose: () => void; onSubmit: (body: Record<string, unknown>) => void }) {
-  const schema = z.object({
-    proof_type: z.string().min(1, 'Choisissez un type de preuve'),
-    proof_reference: z.string().trim().min(2, 'Précisez la preuve (nom de la personne, code…)'),
-    cash: cashDue > 0 ? z.string().regex(/^\d+$/, 'Montant encaissé requis') : z.string().optional(),
-  })
+function DeliverDialog({
+  proofTypes,
+  cashDue,
+  codeEnabled,
+  attemptsLeft,
+  loading,
+  onClose,
+  onSubmit,
+}: {
+  proofTypes: string[]
+  cashDue: number
+  codeEnabled: boolean
+  attemptsLeft: number
+  loading: boolean
+  onClose: () => void
+  onSubmit: (body: Record<string, unknown>) => void
+}) {
+  const schema = z
+    .object({
+      proof_type: z.string().min(1, 'Choisissez un type de preuve'),
+      proof_reference: z.string().trim().min(2, 'Précisez la preuve (nom de la personne, code…)'),
+      cash: cashDue > 0 ? z.string().regex(/^\d+$/, 'Montant encaissé requis') : z.string().optional(),
+    })
+    .refine((v) => !codeEnabled || v.proof_type !== 'code' || /^\d{4}$/.test(v.proof_reference), { path: ['proof_reference'], message: 'Le code comporte 4 chiffres' })
   type Form = z.infer<typeof schema>
-  const { register, handleSubmit, formState } = useForm<Form>({
+  const { register, handleSubmit, formState, control } = useForm<Form>({
     resolver: zodResolver(schema),
     defaultValues: { proof_type: proofTypes[0] ?? '', proof_reference: '', cash: cashDue > 0 ? String(cashDue) : '' },
   })
+  const proofType = useWatch({ control, name: 'proof_type' })
+  const byCode = codeEnabled && proofType === 'code'
   const submit = handleSubmit((v) => onSubmit({ proof_type: v.proof_type, proof_reference: v.proof_reference, ...(cashDue > 0 ? { cash_collected_xof: Number(v.cash) } : {}) }))
 
   return (
@@ -266,9 +343,18 @@ function DeliverDialog({ proofTypes, cashDue, loading, onClose, onSubmit }: { pr
             </Select>
           )}
         </Field>
-        <Field label="Détail de la preuve" required error={formState.errors.proof_reference?.message} hint="Ex. « Remis à Awa en main propre », code communiqué, référence photo.">
-          {(p) => <Input {...p} {...register('proof_reference')} />}
-        </Field>
+        {byCode ? (
+          <Field label="Code de remise donné par le client" required error={formState.errors.proof_reference?.message} hint={`4 chiffres, à demander au client. Essais restants : ${attemptsLeft}.`}>
+            {(p) => <Input {...p} {...register('proof_reference')} inputMode="numeric" autoComplete="off" maxLength={4} className="text-center text-2xl tracking-[0.4em]" />}
+          </Field>
+        ) : (
+          <>
+            {codeEnabled && <Notice tone="warning">Remise sans code : le commercial vérifiera la livraison auprès du client.</Notice>}
+            <Field label={codeEnabled ? 'Nom de la personne qui reçoit' : 'Détail de la preuve'} required error={formState.errors.proof_reference?.message} hint="Ex. « Remis à Awa en main propre ».">
+              {(p) => <Input {...p} {...register('proof_reference')} />}
+            </Field>
+          </>
+        )}
         {cashDue > 0 && (
           <Field label="Montant encaissé (FCFA)" required error={formState.errors.cash?.message} hint={`Montant attendu : ${formatXof(cashDue)}`}>
             {(p) => <Input {...p} inputMode="numeric" {...register('cash')} />}
@@ -279,7 +365,23 @@ function DeliverDialog({ proofTypes, cashDue, loading, onClose, onSubmit }: { pr
   )
 }
 
-function FailDialog({ reasons, loading, onClose, onSubmit }: { reasons: string[]; loading: boolean; onClose: () => void; onSubmit: (body: Record<string, unknown>) => void }) {
+function FailDialog({
+  reasons,
+  clientFaultReasons,
+  minWait,
+  feePercent,
+  loading,
+  onClose,
+  onSubmit,
+}: {
+  reasons: string[]
+  clientFaultReasons: string[]
+  minWait: number
+  feePercent: number
+  loading: boolean
+  onClose: () => void
+  onSubmit: (body: Record<string, unknown>) => void
+}) {
   const schema = z.object({
     incident_reason: z.string().min(1, 'Choisissez un motif'),
     incident_note: z.string().max(1000).optional(),
@@ -287,10 +389,13 @@ function FailDialog({ reasons, loading, onClose, onSubmit }: { reasons: string[]
     contact_attempted: z.boolean(),
   })
   type Form = z.infer<typeof schema>
-  const { register, handleSubmit, formState } = useForm<Form>({
+  const { register, handleSubmit, formState, control } = useForm<Form>({
     resolver: zodResolver(schema),
     defaultValues: { incident_reason: '', incident_note: '', product_condition: 'intact', contact_attempted: false },
   })
+  const reason = useWatch({ control, name: 'incident_reason' })
+  const contacted = useWatch({ control, name: 'contact_attempted' })
+  const clientFault = clientFaultReasons.includes(reason)
   const submit = handleSubmit((v) => onSubmit({ ...v, incident_note: v.incident_note || null }))
 
   return (
@@ -319,7 +424,14 @@ function FailDialog({ reasons, loading, onClose, onSubmit }: { reasons: string[]
             </Select>
           )}
         </Field>
-        <Checkbox label="J'ai tenté de contacter le client" {...register('contact_attempted')} />
+        <Checkbox label={`J'ai appelé ou écrit au client et attendu au moins ${minWait} minutes sur place`} {...register('contact_attempted')} />
+        {clientFault && feePercent > 0 && (
+          <Notice tone={contacted ? 'info' : 'warning'}>
+            {contacted
+              ? `Course rémunérée à ${feePercent} % (échec dû au client).`
+              : `Sans tentative de contact ni attente de ${minWait} minutes, cette course ne sera pas rémunérée.`}
+          </Notice>
+        )}
         <Field label="Précisions" error={formState.errors.incident_note?.message}>{(p) => <Textarea {...p} {...register('incident_note')} />}</Field>
       </form>
     </Modal>

@@ -13,6 +13,9 @@ class StaffOrderActivity extends Notification
         'order.accepted' => 'Commande acceptée : à préparer',
         'order.ready' => 'Commande prête : à affecter à un livreur',
         'order.delivery_failed' => 'Échec de livraison à traiter',
+        'delivery.without_code' => 'Livraison confirmée sans code de remise : à vérifier avec le client',
+        'delivery.code_locked' => 'Trop de codes de remise erronés : appeler le livreur',
+        'delivery.not_accepted' => 'Mission non acceptée par le livreur : relancer ou réaffecter',
         'order.cancelled' => 'Commande annulée',
         'payment.confirmed' => 'Paiement confirmé par le prestataire',
     ];

@@ -1,6 +1,7 @@
 <?php
 
 use App\Domain\Catalog\CatalogImporter;
+use App\Domain\Deliveries\DeliveryService;
 use App\Domain\Invoicing\InvoiceService;
 use App\Domain\Payments\PaymentService;
 use App\Domain\Payments\PaymentStatus;
@@ -17,6 +18,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schedule;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rules\Password;
+use Minishlink\WebPush\VAPID;
 
 use function Laravel\Prompts\password;
 use function Laravel\Prompts\text;
@@ -41,6 +43,17 @@ Artisan::command('mk:create-admin', function () {
 
     return 0;
 })->purpose('Créer un compte administrateur MK Délices');
+
+/** Paire de clés VAPID des notifications du navigateur (à générer UNE fois par environnement). */
+Artisan::command('mk:vapid-keys', function () {
+    $keys = VAPID::createVapidKeys();
+    $this->warn('À copier dans le .env du serveur (la clé privée ne doit jamais être versionnée).');
+    $this->warn('Changer ces clés invalide tous les abonnements : les livreurs devront réactiver les notifications.');
+    $this->line("WEB_PUSH_VAPID_PUBLIC_KEY={$keys['publicKey']}");
+    $this->line("WEB_PUSH_VAPID_PRIVATE_KEY={$keys['privateKey']}");
+
+    return 0;
+})->purpose('Générer les clés VAPID des notifications du navigateur aux livreurs');
 
 /** Rapprochement planifié des paiements en attente (TRD §6). */
 Artisan::command('mk:reconcile-payments', function (PaymentService $payments) {
@@ -67,6 +80,8 @@ Schedule::command('sanctum:prune-expired', ['--hours' => 24])->dailyAt('03:40')-
 // Supervision (audit E9) : battement du planificateur lu par /health, alerte si la file de tâches déborde.
 Schedule::call(fn () => Cache::put(HealthController::SCHEDULER_HEARTBEAT, now()->getTimestamp(), now()->addHour()))->everyMinute()->name('health-heartbeat');
 Schedule::command('queue:monitor', ['database:default', '--max' => 50])->everyFiveMinutes();
+// Audit espace livreur E1 : mission proposée restée sans réponse -> alerte au responsable des livraisons.
+Schedule::command('mk:alert-unaccepted-missions')->everyTwoMinutes()->withoutOverlapping(5);
 
 /** Marque comme commandes de test celles créées par les tests E2E (prénom « E2E »), hors production uniquement. */
 Artisan::command('mk:flag-test-orders {--first-name=E2E}', function () {
@@ -151,3 +166,8 @@ Artisan::command('mk:issue-invoices {--dry-run : Afficher sans émettre}', funct
 
     return 0;
 })->purpose('Émettre les factures dues qui ne l\'ont pas encore été');
+
+/** Signale au responsable des livraisons les missions proposées restées sans réponse (planifiée). */
+Artisan::command('mk:alert-unaccepted-missions', function (DeliveryService $deliveries) {
+    $this->info($deliveries->alertUnacceptedProposals().' alerte(s) envoyée(s).');
+})->purpose('Alerter le responsable des missions non acceptées par les livreurs');

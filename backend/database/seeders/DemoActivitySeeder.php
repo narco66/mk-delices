@@ -391,7 +391,11 @@ class DemoActivitySeeder extends Seeder
 
             return;
         }
-        $deliveries->courierAction($mission, $partner->user, 'deliver', ['proof_type' => 'recipient_confirmation', 'proof_reference' => 'Remis en main propre (démo)']);
+        // Remise avec le code donné par le client (cas nominal) : pas d'alerte « sans code » dans la démonstration.
+        $code = (string) $mission->order()->value('delivery_code');
+        $deliveries->courierAction($mission, $partner->user, 'deliver', $code !== ''
+            ? ['proof_type' => 'code', 'proof_reference' => $code]
+            : ['proof_type' => 'recipient_confirmation', 'proof_reference' => 'Remis en main propre (démo)']);
     }
 
     private function review(Order $order, CarbonImmutable $at): void

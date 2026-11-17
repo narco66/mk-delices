@@ -76,6 +76,7 @@ Les anciens fichiers JS/CSS sont conservés à chaque déploiement : les onglets
 | Cron | `deploy/cron/mk-delices` → `/etc/cron.d/` | Planificateur Laravel (chaque minute) et sauvegarde (02:00) |
 | Sauvegardes | `gpg`, `rclone` ; `/etc/mk-delices/backup.env` ; `mkdir -p /var/lib/mk-delices` | Horodatage lu par `/health` (`HEALTH_BACKUP_STATUS_FILE`) |
 | Journaux | `deploy/logrotate/mk-delices` → `/etc/logrotate.d/` | Rotation du journal des sauvegardes |
+| Notifications livreurs | `php artisan mk:vapid-keys` (une fois par environnement) → `WEB_PUSH_VAPID_PUBLIC_KEY`, `WEB_PUSH_VAPID_PRIVATE_KEY`, `WEB_PUSH_SUBJECT` dans `.env`, puis `php artisan config:cache` et redémarrage du worker | Clé privée = secret, jamais dans Git. Changer les clés oblige chaque livreur à réactiver les notifications. Sortie HTTPS vers Google, Mozilla, Microsoft et Apple. HTTPS obligatoire côté site |
 | Utilisateurs | `deploy` (groupe `www-data`) pour déployer ; PHP-FPM, worker et cron en `www-data` ; sauvegarde en `root` | `deploy/sudoers/mk-deploy` |
 
 ### 3.3 Supervision

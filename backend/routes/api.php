@@ -90,6 +90,8 @@ Route::middleware('throttle:api')->group(function () {
             Route::get('missions/{id}', [MissionController::class, 'show']);
             Route::post('missions/{id}/actions', [MissionController::class, 'action']);
             Route::put('availability', [MissionController::class, 'availability']);
+            Route::post('push-subscriptions', [MissionController::class, 'subscribePush'])->middleware('throttle:20,1');
+            Route::delete('push-subscriptions', [MissionController::class, 'unsubscribePush']);
         });
 
         // Back-office

@@ -3,6 +3,7 @@
 namespace App\Notifications;
 
 use App\Domain\Shared\Money;
+use App\Domain\Shared\Settings;
 use App\Models\Order;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -44,6 +45,13 @@ class CustomerOrderUpdate extends Notification implements ShouldQueue
         return ['mail'];
     }
 
+    private function showCode(): bool
+    {
+        return in_array($this->event, ['order.pending_confirmation', 'order.accepted', 'order.ready', 'order.picked_up', 'payment.confirmed'], true)
+            && $this->order->fulfillment_type === 'delivery' && $this->order->delivery_code
+            && (bool) app(Settings::class)->get('delivery.code_enabled', false);
+    }
+
     public function toMail(object $notifiable): MailMessage
     {
         $subject = self::SUBJECTS[$this->event] ?? 'Mise à jour de votre commande';
@@ -54,6 +62,7 @@ class CustomerOrderUpdate extends Notification implements ShouldQueue
             ->line("{$subject}.")
             ->line("Référence : {$this->order->reference}")
             ->line('Montant total : '.Money::format($this->order->total_xof))
+            ->lineIf($this->showCode(), "Code de remise à donner au livreur à la réception : {$this->order->delivery_code}")
             ->line('Conservez le lien de suivi reçu lors de votre commande pour suivre son avancement.')
             ->salutation('L\'équipe MK Délices');
     }

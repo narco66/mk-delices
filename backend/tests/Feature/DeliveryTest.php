@@ -151,12 +151,14 @@ class DeliveryTest extends TestCase
         $zone = $this->zone(['partner_fee_xof' => 1300]);
         $partner = $this->partner($zone);
         $manager = $this->staff(User::ROLE_RESP_LIVRAISON);
-        $failWith = function (string $reason) use ($zone, $partner, $manager): DeliveryAssignment {
-            $order = $this->readyOrder($zone);
+        // Commandes prêtes créées d'abord (par des clients invités), avant toute connexion du livreur.
+        $orders = [$this->readyOrder($zone), $this->readyOrder($zone), $this->readyOrder($zone)];
+        $failWith = function (string $reason, bool $contacted = true) use (&$orders, $partner, $manager): DeliveryAssignment {
+            $order = array_shift($orders);
             $id = $this->actingAs($manager)->postJson('/api/v1/admin/delivery/assignments', ['order_id' => $order->id, 'partner_id' => $partner->id])->json('data.id');
             $this->actingAs($partner->user)->postJson("/api/v1/courier/missions/{$id}/actions", ['action' => 'accept'])->assertOk();
             $this->postJson("/api/v1/courier/missions/{$id}/actions", ['action' => 'pick_up', 'packaging_checked' => true])->assertOk();
-            $this->postJson("/api/v1/courier/missions/{$id}/actions", ['action' => 'fail', 'incident_reason' => $reason])->assertOk();
+            $this->postJson("/api/v1/courier/missions/{$id}/actions", ['action' => 'fail', 'incident_reason' => $reason, 'contact_attempted' => $contacted])->assertOk();
 
             return DeliveryAssignment::query()->findOrFail($id);
         };
@@ -165,6 +167,10 @@ class DeliveryTest extends TestCase
         $notClientFault = $failWith('produit_endommage');
         $this->assertSame(650, $clientFault->partner_fee_xof, '50 % de 1 300 FCFA');
         $this->assertSame(0, $notClientFault->partner_fee_xof);
+        // Décision du 17/11/2026 : sans tentative de contact ni attente déclarées, pas de rémunération.
+        $noContact = $failWith('client_absent', false);
+        $this->assertSame(0, $noContact->partner_fee_xof);
+        $this->assertDatabaseHas('order_events', ['order_id' => $noContact->order_id, 'to_status' => 'delivery_failed']);
         $this->assertDatabaseHas('order_events', ['order_id' => $clientFault->order_id, 'to_status' => 'delivery_failed']);
 
         // Montants dus : côté responsable et côté livreur.
@@ -190,7 +196,144 @@ class DeliveryTest extends TestCase
         $id = $this->actingAs($this->staff(User::ROLE_RESP_LIVRAISON))->postJson('/api/v1/admin/delivery/assignments', ['order_id' => $order->id, 'partner_id' => $partner->id])->json('data.id');
         $this->actingAs($partner->user)->postJson("/api/v1/courier/missions/{$id}/actions", ['action' => 'accept']);
         $this->postJson("/api/v1/courier/missions/{$id}/actions", ['action' => 'pick_up', 'packaging_checked' => true]);
-        $this->postJson("/api/v1/courier/missions/{$id}/actions", ['action' => 'fail', 'incident_reason' => 'refus_client'])->assertOk();
+        $this->postJson("/api/v1/courier/missions/{$id}/actions", ['action' => 'fail', 'incident_reason' => 'refus_client', 'contact_attempted' => true])->assertOk();
         $this->assertSame(0, DeliveryAssignment::query()->findOrFail($id)->partner_fee_xof);
+    }
+
+    /** Commande prête + livreur de sa zone + mission proposée ; renvoie [commande, livreur, id de mission, responsable]. */
+    private function proposedMission(): array
+    {
+        $zone = $this->zone();
+        $order = $this->readyOrder($zone);
+        $partner = $this->partner($zone);
+        $manager = $this->staff(User::ROLE_RESP_LIVRAISON);
+        $id = $this->actingAs($manager)->postJson('/api/v1/admin/delivery/assignments', ['order_id' => $order->id, 'partner_id' => $partner->id])->assertCreated()->json('data.id');
+
+        return [$order, $partner, $id, $manager];
+    }
+
+    /** Audit espace livreur E2 : un livreur « indisponible » ne reçoit pas de mission. */
+    public function test_unavailable_courier_cannot_be_assigned(): void
+    {
+        $zone = $this->zone();
+        $order = $this->readyOrder($zone);
+        $partner = $this->partner($zone);
+        $this->actingAs($partner->user)->putJson('/api/v1/courier/availability', ['available' => false])->assertOk();
+
+        $this->actingAs($this->staff(User::ROLE_RESP_LIVRAISON))->postJson('/api/v1/admin/delivery/assignments', ['order_id' => $order->id, 'partner_id' => $partner->id])
+            ->assertStatus(422)->assertJsonPath('error.code', 'partner_unavailable');
+        $this->assertSame(0, DeliveryAssignment::query()->count());
+    }
+
+    /** Audit espace livreur M1 : le livreur rend une mission acceptée avant l'enlèvement ; le responsable est prévenu. */
+    public function test_courier_can_release_accepted_mission_before_pickup(): void
+    {
+        [$order, $partner, $id, $manager] = $this->proposedMission();
+        $this->actingAs($partner->user)->postJson("/api/v1/courier/missions/{$id}/actions", ['action' => 'accept'])->assertOk()
+            ->assertJsonPath('data.available_actions', ['pick_up', 'release']);
+        $readyAlertsBefore = NotificationLog::query()->where('order_id', $order->id)->where('event', 'staff:ready')->count();
+
+        $this->postJson("/api/v1/courier/missions/{$id}/actions", ['action' => 'release'])->assertStatus(422)->assertJsonPath('error.code', 'reason_required');
+        $this->postJson("/api/v1/courier/missions/{$id}/actions", ['action' => 'release', 'reason' => 'Crevaison'])->assertOk()
+            ->assertJsonPath('data.status', 'cancelled')->assertJsonPath('data.recipient_phone', null);
+
+        $this->assertSame('ready', $order->fresh()->status->value);
+        $this->assertSame($readyAlertsBefore + 1, NotificationLog::query()->where('order_id', $order->id)->where('event', 'staff:ready')->count(), 'Le responsable est prévenu que la commande est à réaffecter.');
+        $this->assertDatabaseHas('order_events', ['order_id' => $order->id, 'reason' => 'Crevaison']);
+        // Réaffectation possible immédiatement.
+        $this->actingAs($manager)->postJson('/api/v1/admin/delivery/assignments', ['order_id' => $order->id, 'partner_id' => $this->partner(DeliveryAssignment::query()->findOrFail($id)->order->zone)->id])->assertCreated();
+    }
+
+    public function test_mission_cannot_be_released_after_pickup(): void
+    {
+        [, $partner, $id] = $this->proposedMission();
+        $this->actingAs($partner->user)->postJson("/api/v1/courier/missions/{$id}/actions", ['action' => 'accept'])->assertOk();
+        $this->postJson("/api/v1/courier/missions/{$id}/actions", ['action' => 'pick_up', 'packaging_checked' => true])->assertOk();
+        $this->postJson("/api/v1/courier/missions/{$id}/actions", ['action' => 'release', 'reason' => 'Trop tard'])->assertStatus(409);
+    }
+
+    /** Audit espace livreur E1 : mission non acceptée à temps → une seule alerte au responsable. */
+    public function test_unaccepted_mission_alerts_delivery_manager_once(): void
+    {
+        app(Settings::class)->set('delivery.accept_timeout_minutes', 10);
+        [, , , $manager] = $this->proposedMission();
+        $this->artisan('mk:alert-unaccepted-missions')->expectsOutputToContain('0 alerte(s)')->assertSuccessful();
+
+        $this->travel(11)->minutes();
+        $this->artisan('mk:alert-unaccepted-missions')->expectsOutputToContain('1 alerte(s)')->assertSuccessful();
+        $this->artisan('mk:alert-unaccepted-missions')->expectsOutputToContain('0 alerte(s)')->assertSuccessful();
+        $this->assertSame(1, $manager->fresh()->notifications()->get()->filter(fn ($n) => ($n->data['event'] ?? null) === 'delivery.not_accepted')->count());
+    }
+
+    /** Audit espace livreur M2 : le livreur voit les espèces encaissées qu'il doit remettre. */
+    public function test_courier_overview_shows_cash_to_hand_over(): void
+    {
+        [, $partner, $id] = $this->proposedMission();
+        DeliveryAssignment::query()->whereKey($id)->update(['status' => 'delivered', 'delivered_at' => now(), 'closed_at' => now(), 'cash_collected_xof' => 6500]);
+        $this->actingAs($partner->user)->getJson('/api/v1/courier/missions')->assertOk()->assertJsonPath('data.cash_to_hand_over_xof', 6500);
+        DeliveryAssignment::query()->whereKey($id)->update(['settled_at' => now()]);
+        $this->getJson('/api/v1/courier/missions')->assertOk()->assertJsonPath('data.cash_to_hand_over_xof', 0);
+    }
+
+    /** Mission acceptée et enlevée ; renvoie [commande, livreur, id, responsable]. */
+    private function pickedUpMission(): array
+    {
+        [$order, $partner, $id, $manager] = $this->proposedMission();
+        $this->actingAs($partner->user)->postJson("/api/v1/courier/missions/{$id}/actions", ['action' => 'accept'])->assertOk();
+        $this->postJson("/api/v1/courier/missions/{$id}/actions", ['action' => 'pick_up', 'packaging_checked' => true])->assertOk();
+
+        return [$order->fresh(), $partner, $id, $manager];
+    }
+
+    /** Code de remise : connu du client et du commercial, jamais du livreur ; le bon code valide la livraison. */
+    public function test_delivery_code_is_hidden_from_courier_and_validates_delivery(): void
+    {
+        [$order, $partner, $id] = $this->pickedUpMission();
+        $this->assertMatchesRegularExpression('/^\d{4}$/', $order->delivery_code);
+
+        $mission = $this->actingAs($partner->user)->getJson("/api/v1/courier/missions/{$id}")->assertOk()->json('data');
+        $this->assertStringNotContainsString($order->delivery_code, json_encode($mission), 'Le livreur ne doit jamais voir le code.');
+        $this->assertSame(5, $mission['code_attempts_left']);
+        $this->actingAs($this->staff(User::ROLE_COMMERCIAL))->getJson("/api/v1/admin/orders/{$order->id}")->assertOk()->assertJsonPath('data.delivery_code', $order->delivery_code);
+        $this->actingAs($this->staff(User::ROLE_PREPARATEUR))->getJson("/api/v1/admin/orders/{$order->id}")->assertNotFound();
+
+        $this->actingAs($partner->user)->postJson("/api/v1/courier/missions/{$id}/actions", ['action' => 'deliver', 'proof_type' => 'code', 'proof_reference' => $order->delivery_code])
+            ->assertOk()->assertJsonPath('data.status', 'delivered');
+        $this->assertSame(0, NotificationLog::query()->where('order_id', $order->id)->where('event', 'staff:delivery.without_code')->count());
+    }
+
+    /** Codes erronés comptés et conservés ; au 5e, saisie bloquée et responsable alerté ; la remise sans code reste possible. */
+    public function test_wrong_codes_are_counted_then_locked_and_fallback_is_flagged(): void
+    {
+        [$order, $partner, $id, $manager] = $this->pickedUpMission();
+        $wrong = $order->delivery_code === '0000' ? '1111' : '0000';
+        for ($i = 4; $i >= 1; $i--) {
+            $this->actingAs($partner->user)->postJson("/api/v1/courier/missions/{$id}/actions", ['action' => 'deliver', 'proof_type' => 'code', 'proof_reference' => $wrong])
+                ->assertStatus(422)->assertJsonPath('error.code', 'delivery_code_invalid')->assertJsonPath('error.details.remaining_attempts', $i);
+        }
+        $this->postJson("/api/v1/courier/missions/{$id}/actions", ['action' => 'deliver', 'proof_type' => 'code', 'proof_reference' => $wrong])
+            ->assertStatus(409)->assertJsonPath('error.code', 'delivery_code_locked');
+        // Même le bon code est refusé une fois bloqué (pas d'essais au hasard).
+        $this->postJson("/api/v1/courier/missions/{$id}/actions", ['action' => 'deliver', 'proof_type' => 'code', 'proof_reference' => $order->delivery_code])
+            ->assertStatus(409)->assertJsonPath('error.code', 'delivery_code_locked');
+        $this->assertSame(5, DeliveryAssignment::query()->findOrFail($id)->code_failed_attempts);
+        $this->assertSame(1, $manager->fresh()->notifications()->get()->filter(fn ($n) => ($n->data['event'] ?? null) === 'delivery.code_locked')->count());
+
+        // Remise sans code : acceptée, tracée et signalée au commercial pour vérification.
+        $commercial = $this->staff(User::ROLE_COMMERCIAL);
+        $this->postJson("/api/v1/courier/missions/{$id}/actions", ['action' => 'deliver', 'proof_type' => 'recipient_confirmation', 'proof_reference' => 'Remis à Moussa, frère de la cliente'])
+            ->assertOk()->assertJsonPath('data.status', 'delivered');
+        $this->assertTrue($order->events()->get()->contains(fn ($e) => ($e->metadata['event'] ?? null) === 'delivery.without_code'));
+        $this->assertSame(1, $commercial->fresh()->notifications()->get()->filter(fn ($n) => ($n->data['event'] ?? null) === 'delivery.without_code')->count());
+    }
+
+    /** Le client voit son code sur le suivi tant que la commande n'est pas remise. */
+    public function test_customer_sees_delivery_code_until_delivered(): void
+    {
+        [$order, $token] = $this->createOrder();
+        $code = $order->fresh()->delivery_code;
+        $this->getJson("/api/v1/orders/{$order->reference}/status", ['X-Tracking-Token' => $token])->assertOk()->assertJsonPath('data.delivery_code', $code);
+        $order->update(['status' => 'delivered']);
+        $this->getJson("/api/v1/orders/{$order->reference}/status", ['X-Tracking-Token' => $token])->assertOk()->assertJsonPath('data.delivery_code', null);
     }
 }

@@ -68,7 +68,7 @@ export const CONDITION_LABELS: Record<string, string> = {
 }
 
 export const PROOF_LABELS: Record<string, string> = {
-  recipient_confirmation: 'Confirmation du destinataire',
+  recipient_confirmation: 'Remise sans code (nom du destinataire)',
   photo_reference: 'Référence photo',
   code: 'Code de remise',
 }

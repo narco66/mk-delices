@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Domain\Orders\OrderStatus;
+use App\Domain\Shared\Settings;
 use App\Models\Order;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -15,6 +16,14 @@ use Illuminate\Http\Resources\Json\JsonResource;
 class PublicOrderResource extends JsonResource
 {
     private const STEPS = ['pending_confirmation', 'accepted', 'preparing', 'ready', 'picked_up', 'delivered'];
+
+    /** Code de remise utile tant que la commande n'est pas remise (ni annulée). */
+    private function showDeliveryCode(): bool
+    {
+        return (bool) app(Settings::class)->get('delivery.code_enabled', false)
+            && $this->fulfillment_type === 'delivery'
+            && ! in_array($this->status, [OrderStatus::Delivered, OrderStatus::Cancelled, OrderStatus::Rejected], true);
+    }
 
     public function toArray(Request $request): array
     {
@@ -59,6 +68,7 @@ class PublicOrderResource extends JsonResource
                 && in_array($this->payment_status->value, ['unpaid', 'failed', 'pending'], true),
             'can_cancel' => $this->status === OrderStatus::PendingConfirmation,
             'can_review' => $this->status === OrderStatus::Delivered,
+            'delivery_code' => $this->showDeliveryCode() ? $this->delivery_code : null,
             'invoices' => $this->relationLoaded('invoices') ? $this->invoices->map->summary()->values() : [],
             'created_at' => $this->created_at->toIso8601ZuluString(),
         ];

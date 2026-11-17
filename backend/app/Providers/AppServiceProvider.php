@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Domain\Deliveries\Push\PushTransport;
+use App\Domain\Deliveries\Push\WebPushTransport;
 use App\Domain\Shared\Settings;
 use App\Models\User;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -22,6 +24,7 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->singleton(Settings::class);
+        $this->app->bind(PushTransport::class, WebPushTransport::class);
     }
 
     public function boot(): void

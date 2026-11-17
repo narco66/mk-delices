@@ -68,7 +68,7 @@ Les tests cités sont ceux de `backend/tests` (PHPUnit sur PostgreSQL) et `front
 | ID | Statut | Commentaire |
 |---|---|---|
 | NFR-001 Mobile-first, 360 px | ✅ | E2E « aucun débordement horizontal » à 360 px |
-| NFR-002 Performance API | 🟡 | Non mesuré sous charge (à faire en préproduction) |
+| NFR-002 Performance API | 🟡 | Serveur mesuré en préproduction : API p95 < 70 ms, 40–50 pages/s sans erreur. Affichage mobile à mesurer pendant la recette (R-01) et à l'ouverture (PageSpeed) — `docs/RECETTE/PERFORMANCES-PREPRODUCTION.md` |
 | NFR-003 Disponibilité | ⛔ | Dépend de l'hébergement |
 | NFR-004 Sécurité | ✅/🟡 | voir §3 |
 | NFR-005 Traçabilité | ✅ | `order_events`, `audit_logs` immuables |

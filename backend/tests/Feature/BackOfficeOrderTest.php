@@ -2,6 +2,9 @@
 
 namespace Tests\Feature;
 
+use App\Domain\Shared\Settings;
+use App\Models\DeliveryAssignment;
+use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\User;
 use Illuminate\Support\Str;
@@ -72,6 +75,103 @@ class BackOfficeOrderTest extends TestCase
         $this->postJson('/api/v1/admin/orders', $this->payload($zone->id, $slot, ['channel' => 'web']), $this->cartHeaders(...$cart) + ['Idempotency-Key' => (string) Str::uuid()])
             ->assertStatus(422);
         $this->assertSame(0, Order::query()->count());
+    }
+
+    /** Audit E4 : commande téléphone sans paiement en ligne → le livreur a le montant total à encaisser. */
+    /** Commande téléphone non payée, prête et confiée à un livreur ; renvoie [commande, id de mission, livreur]. */
+    private function unpaidPhoneOrderOnTheWay(): array
+    {
+        $zone = $this->zone(['delivery_fee_xof' => 1500]);
+        $commercial = $this->staff(User::ROLE_COMMERCIAL);
+        $this->actingAs($commercial);
+        $cart = $this->cartWith($this->variant(['price_xof' => 2500]), 2);
+        $id = $this->postJson('/api/v1/admin/orders', $this->payload($zone->id, $this->firstSlot($cart)), $this->cartHeaders(...$cart) + ['Idempotency-Key' => (string) Str::uuid()])
+            ->assertCreated()->json('data.id');
+        $order = Order::query()->findOrFail($id);
+        $this->transition($commercial, $order, 'accept')->assertOk();
+        $prep = $this->staff(User::ROLE_PREPARATEUR);
+        $this->transition($prep, $order, 'start_preparation')->assertOk();
+        $this->transition($prep, $order, 'mark_ready', ['packaging_checked' => true])->assertOk();
+        $partner = $this->partner($zone);
+        $missionId = $this->actingAs($this->staff(User::ROLE_RESP_LIVRAISON))->postJson('/api/v1/admin/delivery/assignments', ['order_id' => $order->id, 'partner_id' => $partner->id])
+            ->assertCreated()->json('data.id');
+        $this->actingAs($partner->user)->postJson("/api/v1/courier/missions/{$missionId}/actions", ['action' => 'accept'])->assertOk();
+        $this->postJson("/api/v1/courier/missions/{$missionId}/actions", ['action' => 'pick_up', 'packaging_checked' => true])->assertOk();
+
+        return [$order, $missionId];
+    }
+
+    /** Audit M7 : l'espèce encaissée à la livraison est enregistrée comme paiement → commande payée et facturée. */
+    public function test_cash_collected_on_delivery_is_recorded_as_payment_and_invoiced(): void
+    {
+        [$order, $missionId] = $this->unpaidPhoneOrderOnTheWay();
+        $this->postJson("/api/v1/courier/missions/{$missionId}/actions", ['action' => 'deliver', 'proof_type' => 'recipient_confirmation', 'proof_reference' => 'Remis', 'cash_collected_xof' => 6500])->assertOk();
+
+        $order->refresh();
+        $this->assertSame('paid', $order->payment_status->value);
+        $this->assertSame(6500, $order->paid_xof);
+        $this->assertDatabaseHas('payments', ['order_id' => $order->id, 'provider' => 'manual:cash_on_delivery', 'amount_xof' => 6500, 'status' => 'succeeded']);
+        $this->assertSame(1, Invoice::query()->where('order_id', $order->id)->count(), 'Commande payée et livrée : facture émise.');
+    }
+
+    /** Audit M8 : l'espèce encaissée sur une course gratuite pour le livreur peut quand même être soldée. */
+    public function test_cash_held_on_free_course_can_be_settled(): void
+    {
+        [$order, $missionId] = $this->unpaidPhoneOrderOnTheWay();
+        DeliveryAssignment::query()->whereKey($missionId)->update(['partner_fee_xof' => 0]);
+        $this->postJson("/api/v1/courier/missions/{$missionId}/actions", ['action' => 'deliver', 'proof_type' => 'recipient_confirmation', 'proof_reference' => 'Remis', 'cash_collected_xof' => 6500])->assertOk();
+
+        $manager = $this->staff(User::ROLE_RESP_LIVRAISON);
+        $this->actingAs($manager)->getJson('/api/v1/admin/delivery/payouts')->assertOk()
+            ->assertJsonPath('data.partners.0.cash_held_xof', 6500)->assertJsonPath('data.partners.0.unsettled_missions', 1);
+        $this->postJson('/api/v1/admin/delivery/payouts/settle', ['assignment_ids' => [$missionId]])->assertOk();
+        $this->getJson('/api/v1/admin/delivery/payouts')->assertOk()->assertJsonPath('data.partners.0.cash_held_xof', 0);
+    }
+
+    /** Audit M7 : un encaissement inférieur au dû est enregistré pour sa valeur et l'écart est tracé. */
+    public function test_cash_shortfall_is_traced(): void
+    {
+        [$order, $missionId] = $this->unpaidPhoneOrderOnTheWay();
+        $this->postJson("/api/v1/courier/missions/{$missionId}/actions", ['action' => 'deliver', 'proof_type' => 'recipient_confirmation', 'proof_reference' => 'Remis', 'cash_collected_xof' => 5000])->assertOk();
+
+        $order->refresh();
+        $this->assertSame(5000, $order->paid_xof);
+        $this->assertSame('pending', $order->payment_status->value, 'Solde de 1 500 FCFA encore dû.');
+        $this->assertTrue($order->events()->get()->contains(fn ($e) => ($e->metadata['event'] ?? null) === 'delivery.cash_discrepancy' && $e->metadata['expected_xof'] === 6500 && $e->metadata['collected_xof'] === 5000));
+        $this->assertSame(0, Invoice::query()->where('order_id', $order->id)->count(), 'Pas de facture tant que la commande n\'est pas intégralement payée.');
+    }
+
+    public function test_unpaid_phone_order_gives_courier_amount_to_collect(): void
+    {
+        $zone = $this->zone(['delivery_fee_xof' => 1500]);
+        $commercial = $this->staff(User::ROLE_COMMERCIAL);
+        $this->actingAs($commercial);
+        $cart = $this->cartWith($this->variant(['price_xof' => 2500]), 2);
+        $id = $this->postJson('/api/v1/admin/orders', $this->payload($zone->id, $this->firstSlot($cart)), $this->cartHeaders(...$cart) + ['Idempotency-Key' => (string) Str::uuid()])
+            ->assertCreated()->json('data.id');
+        $order = Order::query()->findOrFail($id);
+        $this->transition($commercial, $order, 'accept')->assertOk();
+        $prep = $this->staff(User::ROLE_PREPARATEUR);
+        $this->transition($prep, $order, 'start_preparation')->assertOk();
+        $this->transition($prep, $order, 'mark_ready', ['packaging_checked' => true])->assertOk();
+
+        $partner = $this->partner($zone);
+        $this->actingAs($this->staff(User::ROLE_RESP_LIVRAISON))->postJson('/api/v1/admin/delivery/assignments', ['order_id' => $order->id, 'partner_id' => $partner->id])
+            ->assertCreated()->assertJsonPath('data.cash_to_collect_xof', 6500);
+    }
+
+    /** Audit E4 : une tentative de paiement en ligne abandonnée ne remplace pas « paiement à la livraison ». */
+    public function test_abandoned_online_attempt_keeps_cash_on_delivery(): void
+    {
+        $settings = app(Settings::class);
+        $settings->set('payments.methods', ['wave' => false, 'orange_money' => false, 'card' => false, 'cash_on_delivery' => true]);
+        [$order, $token] = $this->createOrder(null, null, ['payment_method' => 'cash_on_delivery']);
+        $this->assertSame('cash_on_delivery', $order->payment_method);
+
+        $this->postJson("/api/v1/orders/{$order->reference}/payments", ['method' => 'simulator'], ['X-Tracking-Token' => $token, 'Idempotency-Key' => (string) Str::uuid()])->assertCreated();
+
+        $this->assertSame('cash_on_delivery', $order->fresh()->payment_method, 'Le livreur doit toujours encaisser.');
+        $this->transition($this->staff(User::ROLE_COMMERCIAL), $order, 'accept')->assertOk();
     }
 
     public function test_preparation_start_can_be_undone_within_window_with_reason(): void

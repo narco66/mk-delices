@@ -106,8 +106,8 @@ export function VariantPicker({ variants, value, onChange }: { variants: Variant
             <label
               key={v.id}
               className={cn(
-                'flex min-h-14 cursor-pointer items-center justify-between gap-3 rounded-[var(--radius-control)] border-2 bg-white px-4 py-3 transition',
-                selected ? 'border-cocoa-700 shadow-soft' : 'border-cocoa-100 hover:border-cocoa-300',
+                'has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-raspberry-500 flex min-h-14 cursor-pointer items-center justify-between gap-3 rounded-[var(--radius-control)] border-2 bg-white px-4 py-3 transition',
+                selected ? 'border-cocoa-700 shadow-soft' : 'border-cocoa-300 hover:border-cocoa-500',
                 !v.available && 'cursor-not-allowed opacity-50',
               )}
             >

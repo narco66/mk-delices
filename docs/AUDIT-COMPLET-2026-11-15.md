@@ -113,3 +113,13 @@ B1 et B2 (avec les tests en sandbox Wave), E2, E4, E9, E11, M1, M3 à M13, M15, 
 Constats faibles, à traiter au fil des évolutions.
 
 Chaque correction doit être accompagnée d'un test reproduisant le scénario décrit, puis de l'exécution complète des suites PHPUnit, Vitest et Playwright.
+
+## 8. Suivi des corrections
+
+| Lot | Constats | État | Vérification |
+|---|---|---|---|
+| Lot 1 (15/11/2026) | B3, B4, B5, E1, E3, E5, E6, E7, E8, E10, M2, M14 | **Corrigés** (commit `3db801e`) | Test dédié pour chacun ; sauvegarde/restauration exécutées localement (chiffrement GPG réel à vérifier sur le serveur) ; JS initial de la boutique 255 → 162 kB gz |
+| Lot 2 (16-17/11/2026) | **B1** remboursement Wave (partiel jamais automatique, appel hors verrou, marqueur anti-doublon, pas de nouvel essai sur les POST) · **B2** paiement confirmé après expiration locale · **E2** trop-perçu détecté et remboursé sans avoir · **E4** paiement à la livraison préservé, montant à encaisser calculé · **E9** sonde `/health`, alertes, battement du planificateur · **E11** mot de passe aléatoire de l'administrateur de démonstration hors poste local · **M1** réponses idempotentes chiffrées · **M3** liens de suivi expirant après 30 jours, « Oublier cet appareil » · **M4** code promo des brouillons WhatsApp revérifié et compté · **M5** montant incohérent : tentative close, sans boucle · **M6** notifications par version (second échec notifié) · **M7** espèces à la livraison enregistrées comme paiement · **M8** espèces des courses gratuites soldables · **M9** pas d'encaissement manuel sur commande annulée ou paiement en ligne ouvert · **M10** session expirée et jeton CSRF renouvelé · **M11** erreur de devis affichée · **M12** focus visible, contrastes des champs, menu mobile et lien d'évitement · **M13** conflits de version dans les fenêtres · **M15** 17 index · **M16** nouvelles tentatives espacées, supervisor, rechargement après déploiement · **M17** prérequis serveur, gzip, logrotate · **F3** imputation du remboursement · **I1** identifiant de facture invalide → 404 | **Corrigés** | 131 tests backend (dont 30 nouveaux), 14 tests frontend |
+| Lot 3 | Constats faibles restants (§5) | À traiter au fil des évolutions | — |
+
+**Point d'attention :** le comportement réel de l'API de remboursement Wave (partiel ou intégral) reste à confirmer en sandbox ; tant qu'il ne l'est pas, seul le remboursement intégral d'un paiement Wave est exécuté automatiquement, tout partiel passe en exécution manuelle depuis l'espace marchand Wave.

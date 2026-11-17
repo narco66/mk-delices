@@ -11,6 +11,7 @@ use App\Models\Product;
 use App\Models\Promotion;
 use App\Models\User;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Str;
 use RuntimeException;
 
 /**
@@ -52,9 +53,27 @@ class DemoDataSeeder extends Seeder
             ['livraison@mk-delices.test', 'Resp. Livraison Démo', User::ROLE_RESP_LIVRAISON],
         ];
         foreach ($accounts as [$email, $name, $role]) {
-            $user = User::query()->firstOrCreate(['email' => $email], ['name' => $name, 'password' => self::DEMO_PASSWORD, 'is_active' => true]);
+            $user = User::query()->firstOrCreate(['email' => $email], ['name' => $name, 'password' => $this->passwordFor($role), 'is_active' => true]);
             $user->syncRoles([$role]);
         }
+    }
+
+    /**
+     * Audit E11 : hors poste local, l'administrateur de démonstration n'a JAMAIS le mot de passe public du
+     * dépôt. Il reçoit DEMO_ADMIN_PASSWORD (.env) ou, à défaut, un mot de passe aléatoire affiché une seule fois.
+     */
+    private function passwordFor(string $role): string
+    {
+        if ($role !== User::ROLE_ADMIN || app()->environment(['local', 'testing'])) {
+            return self::DEMO_PASSWORD;
+        }
+        $password = (string) env('DEMO_ADMIN_PASSWORD', '');
+        if (mb_strlen($password) < 12) {
+            $password = Str::password(20, symbols: false);
+            $this->command?->warn("Mot de passe de admin@mk-delices.test (affiché une seule fois, à conserver) : {$password}");
+        }
+
+        return $password;
     }
 
     /** @return array<string, DeliveryZone> */

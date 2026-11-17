@@ -14,6 +14,14 @@ return [
     // index.html du build frontend (pré-rendu SEO servi par SpaController).
     'spa_index_path' => env('SPA_INDEX_PATH', base_path('../frontend/dist/index.html')),
 
+    // Supervision (audit E9) : contrôles de /health.
+    'health' => [
+        // Le planificateur (cron) doit tourner en production : battement attendu toutes les minutes.
+        'require_scheduler' => (bool) env('HEALTH_REQUIRE_SCHEDULER', env('APP_ENV') === 'production' || env('APP_ENV') === 'staging'),
+        // Horodatage de la dernière sauvegarde réussie (écrit par deploy/scripts/backup.sh) ; vide = non vérifié.
+        'backup_status_file' => env('HEALTH_BACKUP_STATUS_FILE'),
+    ],
+
     'payments' => [
         // Simulateur réservé aux environnements local/testing : jamais actif en production.
         'simulator_enabled' => (bool) env('PAYMENTS_SIMULATOR_ENABLED', false) && in_array(env('APP_ENV'), ['local', 'testing', 'staging'], true),

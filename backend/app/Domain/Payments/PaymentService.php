@@ -16,6 +16,7 @@ use App\Jobs\ProcessPaymentEvent;
 use App\Models\Order;
 use App\Models\Payment;
 use App\Models\PaymentEvent;
+use App\Models\Refund;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -90,7 +91,10 @@ class PaymentService
                 'checkout_url' => $session->checkoutUrl,
                 'expires_at' => $session->expiresAt,
             ]);
-            $locked->update(['payment_status' => OrderPaymentStatus::Pending, 'payment_method' => $method]);
+            // Audit E4 : une tentative en ligne (peut-être abandonnée) ne remplace jamais « paiement à la livraison » :
+            // le livreur doit toujours savoir qu'il a un montant à encaisser.
+            $locked->update(['payment_status' => OrderPaymentStatus::Pending]
+                + ($locked->payment_method === GatewayRegistry::CASH_ON_DELIVERY ? [] : ['payment_method' => $method]));
             $this->journal->record($locked, 'payment', null, null, ['event' => 'payment.initiated', 'provider' => $method, 'amount_xof' => $amount, 'payment_id' => $payment->id]);
 
             return $payment;
@@ -173,9 +177,9 @@ class PaymentService
 
             return $payment;
         }
-        if ($status->status === 'pending' && $payment->expires_at && $payment->expires_at->isPast()) {
-            $status = new GatewayStatus('expired', $status->amount, $status->currency, $status->rawStatus);
-        }
+        // Audit B2 : une session que le prestataire annonce encore « en attente » n'est JAMAIS close localement,
+        // même après son heure d'expiration : le client peut être en train de valider. Le prestataire signale
+        // lui-même l'expiration (« expired »), appliquée ci-dessous.
         $this->applyVerifiedStatus($payment, $status, 'reconciliation');
 
         return $payment->fresh();
@@ -191,7 +195,10 @@ class PaymentService
             $locked = Payment::query()->lockForUpdate()->findOrFail($payment->id);
             $locked->update(['last_checked_at' => now(), 'provider_status' => $status->rawStatus]);
 
-            if ($locked->status->isFinal()) {
+            // Succès confirmé par le prestataire sur une tentative close de notre côté (échec ou expiration
+            // annoncés puis rectifiés) : l'argent a bien été prélevé, il doit être enregistré (audit B2).
+            $lateSuccess = $locked->status->isFinal() && $locked->status !== PaymentStatus::Succeeded && $status->status === 'succeeded';
+            if ($locked->status->isFinal() && ! $lateSuccess) {
                 return 'already_final';
             }
 
@@ -199,6 +206,10 @@ class PaymentService
                 if ($status->amount !== $locked->amount_xof || strtoupper((string) $status->currency) !== 'XOF') {
                     $this->journal->record($order, 'payment', null, null, ['event' => 'payment.amount_mismatch', 'payment_id' => $locked->id, 'expected' => $locked->amount_xof, 'received' => $status->amount, 'currency' => $status->currency]);
                     Log::error('payment.amount_mismatch', ['payment_id' => $locked->id]);
+                    // Audit M5 : tentative close (jamais comptée comme encaissée), à examiner par l'équipe avec le
+                    // prestataire ; elle n'est plus reprise par le rapprochement planifié.
+                    $locked->update(['status' => PaymentStatus::Failed, 'failure_reason' => 'amount_mismatch']);
+                    $this->audit->log('payment.amount_mismatch', $locked, null, ['expected' => $locked->amount_xof, 'received' => $status->amount, 'currency' => $status->currency, 'source' => $source]);
 
                     return 'amount_mismatch';
                 }
@@ -207,12 +218,18 @@ class PaymentService
                 $order->payment_status = $order->paid_xof >= $order->total_xof ? OrderPaymentStatus::Paid : OrderPaymentStatus::Pending;
                 $order->version++;
                 $order->save();
-                $this->journal->record($order, 'payment', null, null, ['event' => 'payment.confirmed', 'payment_id' => $locked->id, 'amount_xof' => $locked->amount_xof, 'source' => $source]);
-                $this->audit->log('payment.confirmed', $locked, null, ['amount_xof' => $locked->amount_xof, 'source' => $source], null);
+                $event = $lateSuccess ? 'payment.late_success' : 'payment.confirmed';
+                $this->journal->record($order, 'payment', null, null, ['event' => $event, 'payment_id' => $locked->id, 'amount_xof' => $locked->amount_xof, 'source' => $source]);
+                $this->audit->log($event, $locked, null, ['amount_xof' => $locked->amount_xof, 'source' => $source], null);
+                if ($lateSuccess) {
+                    Log::warning('payment.late_success', ['payment_id' => $locked->id, 'order' => $order->reference]);
+                }
 
                 if (in_array($order->status, [OrderStatus::Cancelled, OrderStatus::Rejected], true)) {
                     // Paiement tardif après annulation : remboursement à instruire (BR §6).
                     $this->refunds->requestForOrder($order, $locked->amount_xof, 'Paiement reçu après annulation/refus de la commande', null);
+                } else {
+                    $this->refundOverpayment($order);
                 }
                 DB::afterCommit(fn () => $this->notifier->paymentConfirmed($order->fresh()));
                 DB::afterCommit(fn () => IssueInvoice::dispatch($order->id));
@@ -236,6 +253,31 @@ class PaymentService
         });
     }
 
+    /**
+     * Double encaissement (audit E2) : tout montant encaissé au-delà du total ouvre une demande de
+     * remboursement du trop-perçu (double contrôle conservé), sans avoir puisque la vente est inchangée.
+     * À appeler sous verrou de la commande.
+     */
+    private function refundOverpayment(Order $order): void
+    {
+        $alreadyHandled = (int) Refund::query()->where('order_id', $order->id)->where('kind', 'overpayment')
+            ->whereIn('status', ['requested', 'approved', 'succeeded'])->sum('amount_xof');
+        $excess = $order->paid_xof - $order->total_xof - $alreadyHandled;
+        if ($excess <= 0) {
+            return;
+        }
+        $this->journal->record($order, 'payment', null, null, ['event' => 'payment.overpaid', 'excess_xof' => $excess]);
+        Log::warning('payment.overpaid', ['order' => $order->reference, 'excess_xof' => $excess]);
+        $this->refunds->requestForOrder($order, $excess, "Trop-perçu : {$excess} FCFA encaissés au-delà du total de la commande", null, 'overpayment');
+    }
+
+    /** Une session de paiement en ligne est-elle encore ouverte (le client peut payer à tout moment) ? */
+    public function hasOpenOnlineSession(Order $order): bool
+    {
+        return Payment::query()->where('order_id', $order->id)->where('is_manual', false)
+            ->whereIn('status', [PaymentStatus::Initiated->value, PaymentStatus::Pending->value])->exists();
+    }
+
     /** Correction / encaissement manuel (espèces à la livraison, virement) : rôle habilité, motif, audit (§7). */
     public function recordManualPayment(Order $order, int $amount, string $method, string $reason, User $actor): Payment
     {
@@ -246,6 +288,14 @@ class PaymentService
         return DB::transaction(function () use ($order, $amount, $method, $reason, $actor) {
             /** @var Order $locked */
             $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
+            // Audit M9 : pas d'encaissement sur une commande annulée, refusée ou brouillon.
+            if (in_array($locked->status, [OrderStatus::Cancelled, OrderStatus::Rejected, OrderStatus::Draft], true)) {
+                throw DomainException::conflict('order_not_payable', 'Cette commande n\'est pas en état d\'être encaissée.');
+            }
+            // Audit E2 : une session en ligne ouverte pourrait être payée en plus de l'encaissement manuel.
+            if ($this->hasOpenOnlineSession($locked)) {
+                throw DomainException::conflict('online_payment_in_progress', 'Un paiement en ligne est en cours pour cette commande : utilisez « Rapprocher » ou attendez son expiration avant d\'enregistrer un encaissement.');
+            }
             $due = $locked->total_xof - $locked->paid_xof;
             if ($amount <= 0 || $amount > $due) {
                 throw DomainException::unprocessable('invalid_amount', "Le montant doit être compris entre 1 et {$due} FCFA.");

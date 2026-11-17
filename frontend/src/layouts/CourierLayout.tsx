@@ -10,6 +10,9 @@ export function CourierLayout() {
 
   return (
     <div className="min-h-dvh bg-cream-50">
+      <a href="#contenu" className="sr-only z-[60] rounded bg-cocoa-700 px-4 py-2 text-white focus:not-sr-only focus:fixed focus:top-2 focus:left-2">
+        Aller au contenu
+      </a>
       <header className="sticky top-0 z-30 border-b border-cocoa-100/70 bg-cream-100/95 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-xl items-center justify-between px-4">
           <Logo />

@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Domain\Shared\Settings;
 use App\Models\DeliveryAssignment;
+use App\Models\NotificationLog;
 use App\Models\User;
 use Tests\TestCase;
 
@@ -125,6 +126,12 @@ class DeliveryTest extends TestCase
         $newMission = $this->postJson('/api/v1/admin/delivery/assignments', ['order_id' => $order->id, 'partner_id' => $partner->id])->assertCreated()->json('data.id');
         $this->actingAs($partner->user)->postJson("/api/v1/courier/missions/{$newMission}/actions", ['action' => 'accept'])->assertOk();
         $this->assertSame('assigned', $order->fresh()->status->value);
+
+        // Audit M6 : un SECOND échec doit de nouveau alerter l'équipe (et non être pris pour un doublon).
+        $this->postJson("/api/v1/courier/missions/{$newMission}/actions", ['action' => 'pick_up', 'packaging_checked' => true])->assertOk();
+        $this->postJson("/api/v1/courier/missions/{$newMission}/actions", ['action' => 'fail', 'incident_reason' => 'client_injoignable'])->assertOk();
+        $this->assertSame(2, NotificationLog::query()->where('order_id', $order->id)->where('event', 'staff:delivery_failed')->count());
+        $this->assertSame(2, $manager->fresh()->notifications()->get()->filter(fn ($n) => ($n->data['event'] ?? null) === 'order.delivery_failed')->count());
     }
 
     public function test_courier_refusal_frees_order_for_reassignment(): void

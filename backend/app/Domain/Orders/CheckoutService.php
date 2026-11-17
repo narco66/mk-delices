@@ -5,6 +5,8 @@ namespace App\Domain\Orders;
 use App\Domain\Cart\Quote;
 use App\Domain\Cart\QuoteService;
 use App\Domain\Payments\GatewayRegistry;
+use App\Domain\Payments\PaymentService;
+use App\Domain\Promotions\PromotionService;
 use App\Domain\Shared\AuditLogger;
 use App\Domain\Shared\DomainException;
 use App\Domain\Shared\Phone;
@@ -225,6 +227,10 @@ class CheckoutService
                 if ($newFee !== $locked->delivery_fee_xof && $locked->paid_xof > 0) {
                     throw DomainException::conflict('amount_change_after_payment', 'Les frais ne peuvent pas changer après encaissement. Annulez et recréez la commande si nécessaire.');
                 }
+                // Audit M3 : le client paierait l'ancien montant (trop-perçu ou solde dû silencieux).
+                if ($newFee !== $locked->delivery_fee_xof && app(PaymentService::class)->hasOpenOnlineSession($locked)) {
+                    throw DomainException::conflict('online_payment_in_progress', 'Un paiement en ligne est en cours : les frais ne peuvent pas changer tant qu\'il n\'est pas terminé.');
+                }
                 $locked->zone_id = $zone->id;
                 $locked->address_snapshot = [
                     'zone_name' => $zone->name,
@@ -256,6 +262,32 @@ class CheckoutService
         });
     }
 
+    /**
+     * Brouillon confirmé : le code promo est revérifié comme au paiement en ligne (dates, limite d'usage,
+     * minimum), la remise recalculée sur les prix du jour et l'usage compté (audit M4). Un code devenu
+     * invalide est retiré et la raison tracée dans l'historique de la commande.
+     */
+    private function revalidateDraftPromotion(Order $order, int $subtotal): int
+    {
+        if (! $order->promotion_code) {
+            return 0;
+        }
+        $promotions = app(PromotionService::class);
+        try {
+            $promotion = $promotions->findApplicable($order->promotion_code, $subtotal, lock: true);
+        } catch (DomainException $e) {
+            $this->journal->record($order, 'details', null, $e->getMessage(), ['event' => 'promotion.removed', 'code' => $order->promotion_code]);
+            $order->promotion_id = null;
+            $order->promotion_code = null;
+
+            return 0;
+        }
+        $order->promotion_id = $promotion->id;
+        Promotion::query()->whereKey($promotion->id)->increment('used_count');
+
+        return min($promotions->discountFor($promotion, $subtotal), $subtotal);
+    }
+
     private function repriceFromCatalog(Order $order): void
     {
         $subtotal = 0;
@@ -272,7 +304,7 @@ class CheckoutService
             $subtotal += $variant->price_xof * $item->qty;
         }
         $order->subtotal_xof = $subtotal;
-        $order->discount_xof = min($order->discount_xof, $subtotal);
+        $order->discount_xof = $this->revalidateDraftPromotion($order, $subtotal);
         if ($order->zone_id) {
             $order->delivery_fee_xof = (int) DeliveryZone::query()->whereKey($order->zone_id)->value('delivery_fee_xof');
         }

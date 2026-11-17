@@ -13,6 +13,15 @@ class CustomerOrderUpdate extends Notification implements ShouldQueue
 {
     use Queueable;
 
+    /** Nouvelles tentatives espacées (audit M16) : une coupure SMTP passagère ne fait plus perdre l'email. */
+    public int $tries = 5;
+
+    /** @return list<int> secondes avant chaque nouvelle tentative */
+    public function backoff(): array
+    {
+        return [60, 300, 900, 1800];
+    }
+
     private const SUBJECTS = [
         'order.pending_confirmation' => 'Nous avons bien reçu votre commande',
         'order.accepted' => 'Votre commande est confirmée',

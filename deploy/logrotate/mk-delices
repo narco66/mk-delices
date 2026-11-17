@@ -1,0 +1,9 @@
+# /etc/logrotate.d/mk-delices — journaux d'exploitation hors Laravel (Laravel fait sa propre rotation quotidienne).
+/var/log/mk-delices/backup.log {
+    weekly
+    rotate 12
+    compress
+    missingok
+    notifempty
+    create 0640 root adm
+}

@@ -53,6 +53,10 @@ fi
 find "$BACKUP_DIR" -type f -mtime +"$RETENTION_DAYS" -delete
 echo "$(date -u +%FT%TZ) sauvegarde OK : $(basename "$db_file"), $(basename "$media_file")"
 
+# Horodatage lisible par l'application (contrôle « backup » de /health, alerte si > 26 h).
+: "${STATUS_FILE:=/var/lib/mk-delices/last-backup}"
+mkdir -p "$(dirname "$STATUS_FILE")" && date -u +%s > "$STATUS_FILE" && chmod 644 "$STATUS_FILE"
+
 if [[ -n "$HEARTBEAT_URL" ]]; then
   curl -fsS -m 10 --retry 3 "$HEARTBEAT_URL" > /dev/null || echo "Avertissement : sonde de supervision injoignable" >&2
 fi

@@ -6,6 +6,7 @@ use App\Domain\Shared\Settings;
 use App\Models\Order;
 use App\Models\Promotion;
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /** CART-002, ORDER-003 — T-002, T-003, T-004, T-005, T-016, T-017, T-023 */
@@ -61,6 +62,13 @@ class CheckoutTest extends TestCase
         $second = $this->postJson('/api/v1/checkout/orders', $payload, $headers)->assertCreated()->assertHeader('Idempotent-Replayed', 'true');
         $this->assertSame($first->json('data.reference'), $second->json('data.reference'));
         $this->assertSame(1, Order::query()->count());
+        // Audit M1 : le rejeu rend le même jeton de suivi, mais il n'est jamais lisible en base.
+        $token = $first->json('data.tracking_token');
+        $this->assertSame($token, $second->json('data.tracking_token'));
+        $stored = (string) DB::table('idempotency_keys')->where('key', 'double-click-0001')->value('response_json');
+        $this->assertNotSame('', $stored);
+        $this->assertStringNotContainsString($token, $stored);
+        $this->assertStringNotContainsString($first->json('data.reference'), $stored);
 
         $payload['customer']['first_name'] = 'Autre';
         $this->postJson('/api/v1/checkout/orders', $payload, $headers)->assertStatus(409)->assertJsonPath('error.code', 'idempotency_key_reused');

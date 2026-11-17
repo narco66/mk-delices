@@ -15,6 +15,6 @@ class IdempotencyKey extends Model
 
     protected function casts(): array
     {
-        return ['response_json' => 'array', 'expires_at' => 'datetime', 'created_at' => 'datetime'];
+        return ['response_json' => 'encrypted:array', 'expires_at' => 'datetime', 'created_at' => 'datetime'];
     }
 }

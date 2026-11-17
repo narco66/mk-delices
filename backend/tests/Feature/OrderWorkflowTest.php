@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Order;
 use App\Models\OrderEvent;
+use App\Models\Promotion;
 use App\Models\User;
 use Illuminate\Database\QueryException;
 use Tests\TestCase;
@@ -123,5 +124,48 @@ class OrderWorkflowTest extends TestCase
         ])->assertOk();
         $this->transition($commercial, $order, 'submit')->assertOk()->assertJsonPath('data.status', 'pending_confirmation')
             ->assertJsonPath('data.delivery_fee_xof', 1500);
+    }
+
+    /** Audit M4 : le code promo d'un brouillon WhatsApp est revérifié et compté à la confirmation. */
+    public function test_whatsapp_draft_promotion_is_revalidated_and_counted(): void
+    {
+        $promo = Promotion::query()->create(['code' => 'UNEFOIS', 'name' => '10 %', 'discount_type' => 'percent', 'discount_value' => 10, 'usage_limit' => 1, 'active' => true]);
+        $zone = $this->zone();
+        $variant = $this->variant(['price_xof' => 5000]);
+        $commercial = $this->staff(User::ROLE_COMMERCIAL);
+
+        // Deux clients envoient leur panier sur WhatsApp avec le même code, encore valable à ce moment-là.
+        $draft = function () use ($variant) {
+            $cart = $this->cartWith($variant, 2);
+            $reference = $this->postJson('/api/v1/checkout/whatsapp-draft', ['promotion_code' => 'UNEFOIS'], $this->cartHeaders(...$cart))->assertCreated()->json('data.reference');
+            $order = Order::query()->where('reference', $reference)->firstOrFail();
+            $this->assertSame('UNEFOIS', $order->promotion_code);
+
+            return [$order, $this->firstSlot($cart)];
+        };
+        $confirm = function (Order $order, string $slot) use ($zone, $commercial) {
+            $this->actingAs($commercial)->patchJson("/api/v1/admin/orders/{$order->id}/details", [
+                'customer' => ['first_name' => 'Fatou', 'phone' => '781234567'],
+                'delivery' => ['zone_id' => $zone->id, 'district' => 'Quartier fictif'],
+                'slot_start_at' => $slot,
+            ])->assertOk();
+            $this->transition($commercial, $order, 'submit')->assertOk();
+
+            return $order->fresh();
+        };
+        [$draftA, $slotA] = $draft();
+        [$draftB, $slotB] = $draft();
+
+        $first = $confirm($draftA, $slotA);
+        $this->assertSame(1000, $first->discount_xof);
+        $this->assertSame(1, $promo->fresh()->used_count, 'L\'usage du code est compté à la confirmation.');
+
+        // Limite atteinte entre-temps : le second brouillon perd la remise, et la raison est tracée.
+        $second = $confirm($draftB, $slotB);
+        $this->assertSame(0, $second->discount_xof);
+        $this->assertNull($second->promotion_code);
+        $this->assertSame($second->subtotal_xof + $second->delivery_fee_xof, $second->total_xof);
+        $this->assertTrue($second->events()->get()->contains(fn ($e) => ($e->metadata['event'] ?? null) === 'promotion.removed'));
+        $this->assertSame(1, $promo->fresh()->used_count);
     }
 }

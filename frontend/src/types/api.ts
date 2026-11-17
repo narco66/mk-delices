@@ -266,6 +266,10 @@ export interface Refund {
   payment_id: string
   amount_xof: number
   status: string
+  /** « sale » : réduction de la vente (avoir) ; « overpayment » : restitution d'un trop-perçu */
+  kind?: 'sale' | 'overpayment'
+  /** Pourquoi le remboursement n'a pas été exécuté automatiquement (action manuelle attendue) */
+  execution_note?: string | null
   reason: string
   provider_ref: string | null
   requested_by?: string | null

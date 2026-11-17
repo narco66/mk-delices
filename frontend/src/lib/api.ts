@@ -41,14 +41,15 @@ function readCookie(name: string): string | null {
   return match ? decodeURIComponent(match[1]) : null
 }
 
-async function ensureCsrf(): Promise<void> {
-  if (readCookie('XSRF-TOKEN')) return
+/** Obtient un cookie CSRF (une seule requête à la fois). `force` : en redemander un même si un cookie existe (expiré). */
+async function ensureCsrf(force = false): Promise<void> {
+  if (!force && readCookie('XSRF-TOKEN')) return
   csrfReady ??= fetch('/sanctum/csrf-cookie', { credentials: 'include' }).then(() => undefined)
   await csrfReady
   csrfReady = null
 }
 
-export async function request<T>(method: Method, path: string, options: RequestOptions = {}): Promise<T> {
+export async function request<T>(method: Method, path: string, options: RequestOptions = {}, retried = false): Promise<T> {
   const isForm = options.body instanceof FormData
   if (method !== 'GET') await ensureCsrf()
 
@@ -75,7 +76,11 @@ export async function request<T>(method: Method, path: string, options: RequestO
   const payload = await response.json().catch(() => null)
 
   if (!response.ok) {
-    if (response.status === 419) csrfReady = null
+    // Jeton CSRF expiré (419) : on en obtient un neuf et on rejoue la requête une seule fois (audit M10).
+    if (response.status === 419 && !retried) {
+      await ensureCsrf(true)
+      return request<T>(method, path, options, true)
+    }
     const err = payload?.error
     throw new ApiError(
       response.status,

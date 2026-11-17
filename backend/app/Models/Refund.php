@@ -14,7 +14,7 @@ class Refund extends Model
 
     protected function casts(): array
     {
-        return ['amount_xof' => 'integer', 'approved_at' => 'datetime', 'completed_at' => 'datetime'];
+        return ['amount_xof' => 'integer', 'approved_at' => 'datetime', 'completed_at' => 'datetime', 'auto_execution_started_at' => 'datetime'];
     }
 
     public function payment(): BelongsTo

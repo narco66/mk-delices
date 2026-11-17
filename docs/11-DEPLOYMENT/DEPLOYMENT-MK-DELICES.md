@@ -62,6 +62,28 @@ Comportement du script de déploiement :
 
 Les anciens fichiers JS/CSS sont conservés à chaque déploiement : les onglets déjà ouverts continuent de fonctionner.
 
+### 3.2 Installation du serveur (Ubuntu 24.04, une seule fois)
+
+| Élément | Exigence | Remarque |
+|---|---|---|
+| PHP | **8.4 ou 8.5** (PPA `ondrej/php`) avec `php-fpm`, `pgsql`, `gd` (support WebP), `xml` (dom), `mbstring`, `curl`, `zip`, `opcache` | Ubuntu 24.04 fournit PHP 8.3 : insuffisant. Contrôle : `composer check-platform-reqs` |
+| Limites PHP (pool FPM) | `upload_max_filesize = 8M`, `post_max_size = 10M`, `memory_limit = 512M`, `max_execution_time = 60` | Ré-encodage des photos produits (jusqu'à 6 Mo) |
+| PostgreSQL | **18** (dépôt PGDG), y compris le client `pg_dump` 18 | Le client 16 d'Ubuntu refuse de sauvegarder un serveur 18. Rôles `mk_app` (application) et `mk_backup` (lecture seule) |
+| Node.js | ≥ 20.19 (Vite 8) | Uniquement pour le build pendant le déploiement |
+| Composer | 2.x | |
+| Nginx | `deploy/nginx/*.conf`, certificat `certbot --nginx` | Compression gzip incluse ; préproduction : `htpasswd` + liste blanche d'IP |
+| Supervisor | `deploy/supervisor/mk-delices-worker.conf` | `mkdir -p /var/log/mk-delices && chown www-data /var/log/mk-delices` |
+| Cron | `deploy/cron/mk-delices` → `/etc/cron.d/` | Planificateur Laravel (chaque minute) et sauvegarde (02:00) |
+| Sauvegardes | `gpg`, `rclone` ; `/etc/mk-delices/backup.env` ; `mkdir -p /var/lib/mk-delices` | Horodatage lu par `/health` (`HEALTH_BACKUP_STATUS_FILE`) |
+| Journaux | `deploy/logrotate/mk-delices` → `/etc/logrotate.d/` | Rotation du journal des sauvegardes |
+| Utilisateurs | `deploy` (groupe `www-data`) pour déployer ; PHP-FPM, worker et cron en `www-data` ; sauvegarde en `root` | `deploy/sudoers/mk-deploy` |
+
+### 3.3 Supervision
+
+- **Sonde externe** (UptimeRobot, Healthchecks…) toutes les 5 minutes sur `https://<domaine>/health` : `200` = tout va bien, `503` = un contrôle a échoué (base de données, cache, file de tâches bloquée, tâches en échec sur 24 h, paiements en attente depuis plus de 2 h, planificateur arrêté, sauvegarde de plus de 26 h).
+- **Alertes** : `LOG_STACK=daily,slack` et `LOG_SLACK_WEBHOOK_URL` dans `.env` → erreurs et incidents critiques (tâche en échec, file saturée, encaissement incohérent, remboursement à vérifier) envoyés sur le canal d'alerte.
+- **Sauvegarde** : `HEARTBEAT_URL` dans `/etc/mk-delices/backup.env` → la sonde alerte si aucune sauvegarde réussie depuis 26 h.
+
 ## 4. Supervision et alertes
 
 | Signal | Seuil d alerte initial | Action |

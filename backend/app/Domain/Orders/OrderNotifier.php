@@ -77,7 +77,9 @@ class OrderNotifier
             'recipient_masked' => $recipientMasked,
             'event' => $event,
             'channel' => $channel,
-            'dedupe_key' => "order:{$order->id}:{$event}",
+            // Version de la commande dans la clé (audit M6) : un même événement rejoué n'est envoyé qu'une fois,
+            // mais un événement qui se reproduit (second échec de livraison, nouvelle remise en route) est notifié.
+            'dedupe_key' => "order:{$order->id}:{$event}:v{$order->version}",
             'delivery_status' => $status,
             'sent_at' => $status === 'sent' ? now() : null,
             'created_at' => now(),

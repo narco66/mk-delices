@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/Button'
-import { Card, Modal, PageHeader, StatusPill } from '@/components/ui/Display'
+import { Badge, Card, Modal, PageHeader, StatusPill } from '@/components/ui/Display'
 import { EmptyState, ErrorState, errorMessage, Notice, Skeleton } from '@/components/ui/Feedback'
 import { Field, Input, Select, Textarea } from '@/components/ui/Form'
 import { useAuth } from '@/features/auth/AuthContext'
@@ -92,9 +92,11 @@ export function RefundsPage() {
                           {r.order_reference ?? 'Commande'}
                         </Link>
                         <StatusPill status={r.status} label={REFUND_STATUS_LABELS[r.status] ?? r.status} />
+                        {r.kind === 'overpayment' && <Badge tone="warning">Trop-perçu</Badge>}
                         <span className="font-semibold tabular-nums">{formatXof(r.amount_xof)}</span>
                       </div>
                       <p className="mt-1 text-sm text-cocoa-700">{r.reason}</p>
+                      {r.status === 'approved' && r.execution_note && <p className="mt-1.5 rounded bg-warning-50 px-2 py-1 text-xs text-warning-600">{r.execution_note}</p>}
                       <p className="mt-1 text-xs text-cocoa-500">
                         Demandé le {formatDateTime(r.created_at)} par {r.requested_by ?? 'le système'}
                         {r.approved_by && ` · traité par ${r.approved_by} le ${formatDateTime(r.approved_at)}`}

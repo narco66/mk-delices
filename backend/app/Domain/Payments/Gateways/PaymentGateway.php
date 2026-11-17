@@ -28,6 +28,12 @@ interface PaymentGateway
     public function refund(Refund $refund, Payment $payment): ?string;
 
     /**
+     * Le prestataire sait-il rembourser une PARTIE d'un paiement (montant transmis) ? Sinon, seul le
+     * remboursement intégral d'un paiement est exécuté automatiquement ; un partiel passe en exécution manuelle.
+     */
+    public function supportsPartialRefund(): bool;
+
+    /**
      * Authentifie la requête webhook et en extrait l'événement.
      *
      * @throws InvalidWebhookSignature

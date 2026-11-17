@@ -23,7 +23,7 @@ import {
   Wallet,
   X,
 } from 'lucide-react'
-import { useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router'
 import { Logo } from '@/components/brand/Brand'
 import { useAuth } from '@/features/auth/AuthContext'
@@ -102,6 +102,11 @@ export function AdminLayout() {
   const navigate = useNavigate()
   const open = openPath === location.pathname
   const setOpen = (value: boolean | ((o: boolean) => boolean)) => setOpenPath((typeof value === 'function' ? value(open) : value) ? location.pathname : null)
+  // À l'ouverture du menu mobile, le focus clavier entre dans le menu (une seule fois, pas à chaque rendu).
+  const drawerRef = useRef<HTMLElement>(null)
+  useEffect(() => {
+    if (open) drawerRef.current?.querySelector<HTMLElement>('a, button')?.focus()
+  }, [open])
 
   const sections = SECTIONS.map((s) => ({ ...s, items: s.items.filter((i) => !i.permission || can(i.permission)) })).filter((s) => s.items.length)
 
@@ -158,11 +163,26 @@ export function AdminLayout() {
 
   return (
     <div className="min-h-dvh bg-cream-50 lg:grid lg:grid-cols-[260px_1fr]">
+      <a href="#contenu" className="sr-only z-[60] rounded bg-cocoa-700 px-4 py-2 text-white focus:not-sr-only focus:fixed focus:top-2 focus:left-2">
+        Aller au contenu
+      </a>
       <aside className="sticky top-0 hidden h-dvh border-r border-cocoa-100/70 bg-cream-100 lg:block">{sidebar}</aside>
       {open && (
-        <div className="fixed inset-0 z-50 lg:hidden">
-          <button type="button" className="absolute inset-0 bg-cocoa-900/40" aria-label="Fermer le menu" onClick={() => setOpen(false)} />
-          <aside className="absolute inset-y-0 left-0 w-[280px] bg-cream-100 shadow-lift">{sidebar}</aside>
+        // Menu mobile (audit M12) : dialogue modal, fermeture par Échap, focus placé dans le menu à l'ouverture.
+        <div
+          className="fixed inset-0 z-50 lg:hidden"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Menu du back-office"
+          onKeyDown={(e) => e.key === 'Escape' && setOpen(false)}
+        >
+          <button type="button" className="absolute inset-0 bg-cocoa-900/40" aria-label="Fermer le menu" onClick={() => setOpen(false)} tabIndex={-1} />
+          <aside
+            ref={drawerRef}
+            className="absolute inset-y-0 left-0 w-[280px] overflow-y-auto bg-cream-100 shadow-lift"
+          >
+            {sidebar}
+          </aside>
         </div>
       )}
       <div className="min-w-0">
@@ -203,7 +223,7 @@ function Notifications() {
   const unread = data?.meta.unread ?? 0
 
   return (
-    <div className="relative">
+    <div className="relative" onKeyDown={(e) => e.key === 'Escape' && setOpen(false)}>
       <button type="button" onClick={() => setOpen((o) => !o)} className="relative grid size-10 place-items-center rounded-full hover:bg-cream-200" aria-expanded={open} aria-label={`Notifications, ${unread} non lue${unread > 1 ? 's' : ''}`}>
         <Bell className="size-5" />
         {unread > 0 && <span className="absolute top-1 right-1 grid min-w-4 place-items-center rounded-full bg-raspberry-500 px-1 text-[10px] font-bold text-white">{unread}</span>}

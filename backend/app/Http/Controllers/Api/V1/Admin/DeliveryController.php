@@ -82,7 +82,7 @@ class DeliveryController extends Controller
     {
         $rows = DB::select(
             "SELECT p.id, p.display_name,
-                    count(a.id) FILTER (WHERE a.status IN ('delivered','failed') AND a.partner_fee_xof > 0 AND a.settled_at IS NULL)::int AS unsettled_missions,
+                    count(a.id) FILTER (WHERE a.status IN ('delivered','failed') AND (a.partner_fee_xof > 0 OR a.cash_collected_xof > 0) AND a.settled_at IS NULL)::int AS unsettled_missions,
                     coalesce(sum(a.partner_fee_xof) FILTER (WHERE a.status IN ('delivered','failed') AND a.settled_at IS NULL), 0)::bigint AS amount_due_xof,
                     coalesce(sum(a.cash_collected_xof) FILTER (WHERE a.status = 'delivered' AND a.settled_at IS NULL), 0)::bigint AS cash_held_xof,
                     count(a.id) FILTER (WHERE a.status = 'delivered')::int AS delivered_total,

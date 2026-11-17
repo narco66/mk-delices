@@ -38,7 +38,7 @@ class WaveGateway implements PaymentGateway
     public function createSession(Payment $payment, Order $order): GatewaySession
     {
         $front = rtrim(config('mkdelices.frontend_url'), '/');
-        $response = $this->http()->post('/v1/checkout/sessions', [
+        $response = $this->http(retry: false)->withHeaders(['Idempotency-Key' => 'mkd-session-'.$payment->id])->post('/v1/checkout/sessions', [
             'amount' => (string) $payment->amount_xof,
             'currency' => 'XOF',
             'client_reference' => $payment->id,
@@ -76,7 +76,10 @@ class WaveGateway implements PaymentGateway
 
     public function refund(Refund $refund, Payment $payment): ?string
     {
-        $response = $this->http()->post('/v1/checkout/sessions/'.rawurlencode((string) $payment->provider_reference).'/refund');
+        // Audit B1 : appelé uniquement pour un remboursement INTÉGRAL du paiement (supportsPartialRefund() = false),
+        // sans nouvel essai automatique (POST non idempotent) et avec une clé d'idempotence propre au remboursement.
+        $response = $this->http(retry: false)->withHeaders(['Idempotency-Key' => 'mkd-refund-'.$refund->id])
+            ->post('/v1/checkout/sessions/'.rawurlencode((string) $payment->provider_reference).'/refund');
         if (! $response->successful()) {
             throw new GatewayUnavailable('Remboursement Wave refusé ('.$response->status().').');
         }
@@ -117,10 +120,22 @@ class WaveGateway implements PaymentGateway
         ]);
     }
 
-    private function http(): PendingRequest
+    /**
+     * Partiel non confirmé : l'API publique de Wave ne documente qu'un remboursement de la session entière.
+     * À passer à true seulement après validation en sandbox de l'envoi d'un montant (décision D-PAY-01).
+     */
+    public function supportsPartialRefund(): bool
     {
-        return Http::baseUrl((string) config('mkdelices.payments.wave.api_base'))
+        return false;
+    }
+
+    /** Nouvel essai automatique réservé aux lectures : un POST rejoué pourrait créer une session ou un remboursement en double. */
+    private function http(bool $retry = true): PendingRequest
+    {
+        $request = Http::baseUrl((string) config('mkdelices.payments.wave.api_base'))
             ->withToken((string) config('mkdelices.payments.wave.api_key'))
-            ->acceptJson()->timeout(15)->retry(2, 500, throw: false);
+            ->acceptJson()->timeout(15);
+
+        return $retry ? $request->retry(2, 500, throw: false) : $request;
     }
 }

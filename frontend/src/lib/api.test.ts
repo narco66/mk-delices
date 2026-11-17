@@ -29,6 +29,27 @@ describe('client API', () => {
     expect(init!.credentials).toBe('include')
   })
 
+  it('renouvelle le jeton CSRF expiré (419) et rejoue la requête une seule fois', async () => {
+    document.cookie = 'XSRF-TOKEN=ancien'
+    const spy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: { code: 'csrf', message: 'Expiré' } }), { status: 419 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 })) // /sanctum/csrf-cookie
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data: 'ok' }), { status: 200 }))
+    await expect(api.post('/cart', {})).resolves.toEqual({ data: 'ok' })
+    expect(spy).toHaveBeenCalledTimes(3)
+    expect(String(spy.mock.calls[1][0])).toBe('/sanctum/csrf-cookie')
+
+    // Un second 419 consécutif n'entraîne pas de boucle : l'erreur est remontée.
+    spy.mockReset()
+    spy
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: { code: 'csrf', message: 'Expiré' } }), { status: 419 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: { code: 'csrf', message: 'Expiré' } }), { status: 419 }))
+    await expect(api.post('/cart', {})).rejects.toMatchObject({ status: 419 })
+    expect(spy).toHaveBeenCalledTimes(3)
+  })
+
   it('signale une erreur réseau lisible', async () => {
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('Failed to fetch'))
     await expect(api.get('/x')).rejects.toMatchObject({ code: 'network_error', status: 0 })

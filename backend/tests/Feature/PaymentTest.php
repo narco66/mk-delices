@@ -3,12 +3,16 @@
 namespace Tests\Feature;
 
 use App\Domain\Payments\Gateways\SimulatorGateway;
+use App\Domain\Payments\PaymentService;
 use App\Domain\Payments\RefundService;
 use App\Domain\Shared\DomainException;
+use App\Domain\Shared\Settings;
+use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\PaymentEvent;
 use App\Models\Refund;
 use App\Models\User;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -91,6 +95,118 @@ class PaymentTest extends TestCase
 
         $this->postJson("/api/v1/orders/{$order->reference}/payments/refresh", [], ['X-Tracking-Token' => $token])
             ->assertOk()->assertJsonPath('data.payment_status', 'pending');
+    }
+
+    /** Audit B2 : une session encore « en attente » chez le prestataire n'est jamais close localement. */
+    public function test_reconciliation_never_expires_a_payment_still_pending_at_provider(): void
+    {
+        [$order, $token] = $this->createOrder();
+        $this->initiate($order->reference, $token)->assertCreated();
+        $payment = Payment::query()->firstOrFail();
+        $payment->update(['expires_at' => now()->subHour(), 'created_at' => now()->subHours(2)]);
+
+        $this->artisan('mk:reconcile-payments')->expectsOutputToContain('1 paiement(s) vérifié(s)')->assertSuccessful();
+        $this->assertSame('pending', $payment->fresh()->status->value);
+
+        // Le client valide finalement : le paiement est bien enregistré.
+        $this->signedWebhook(app(SimulatorGateway::class)->completeSession($payment->provider_reference, 'success'))->assertOk();
+        $this->assertSame('paid', $order->fresh()->payment_status->value);
+    }
+
+    /** Audit B2 : un succès confirmé par le prestataire après une clôture locale n'est jamais perdu. */
+    public function test_late_success_on_closed_payment_is_recorded_and_flagged(): void
+    {
+        [$order, $token] = $this->createOrder();
+        $this->initiate($order->reference, $token)->assertCreated();
+        $payment = Payment::query()->firstOrFail();
+        $payment->update(['status' => 'expired']); // clôturé de notre côté (ancien comportement, ou échec annoncé puis rectifié)
+
+        $this->signedWebhook(app(SimulatorGateway::class)->completeSession($payment->provider_reference, 'success'))->assertOk();
+
+        $order->refresh();
+        $this->assertSame('succeeded', $payment->fresh()->status->value);
+        $this->assertSame('paid', $order->payment_status->value);
+        $this->assertSame($order->total_xof, $order->paid_xof);
+        $this->assertDatabaseHas('order_events', ['order_id' => $order->id, 'type' => 'payment']);
+        $this->assertTrue($order->events()->get()->contains(fn ($e) => ($e->metadata['event'] ?? null) === 'payment.late_success'));
+
+        // Rejouer la confirmation ne compte pas deux fois l'encaissement.
+        app(PaymentService::class)->reconcile($payment->fresh());
+        $this->assertSame($order->total_xof, $order->fresh()->paid_xof);
+    }
+
+    /** Audit E2 : un double encaissement est détecté et le trop-perçu remboursé, sans avoir. */
+    public function test_overpayment_opens_overpayment_refund_without_credit_note(): void
+    {
+        app(Settings::class)->set('invoicing.issue_on', 'paid');
+        [$order, $token] = $this->createOrder();
+        $this->initiate($order->reference, $token)->assertCreated();
+        $online = Payment::query()->firstOrFail();
+        $online->update(['status' => 'expired']); // session crue terminée…
+
+        // … le client paie en espèces, enregistrées par le commercial…
+        $commercial = $this->staff(User::ROLE_COMMERCIAL);
+        $this->actingAs($commercial)->postJson("/api/v1/admin/orders/{$order->id}/payments/manual", ['amount_xof' => $order->total_xof, 'method' => 'cash', 'reason' => 'Espèces reçues au magasin'])->assertCreated();
+        // … puis le paiement en ligne aboutit malgré tout chez le prestataire.
+        $this->signedWebhook(app(SimulatorGateway::class)->completeSession($online->provider_reference, 'success'))->assertOk();
+
+        $order->refresh();
+        $this->assertSame(2 * $order->total_xof, $order->paid_xof);
+        $refund = Refund::query()->where('order_id', $order->id)->sole();
+        $this->assertSame('overpayment', $refund->kind);
+        $this->assertSame($order->total_xof, $refund->amount_xof);
+        $this->assertSame('requested', $refund->status, 'Le trop-perçu reste soumis au double contrôle.');
+
+        $this->actingAs($this->staff(User::ROLE_ADMIN))->postJson("/api/v1/admin/refunds/{$refund->id}/approve")->assertOk();
+        $this->assertSame(1, Invoice::query()->where('order_id', $order->id)->count(), 'Une facture, aucun avoir pour un trop-perçu.');
+    }
+
+    /** Audit E2 / M9 : pas d'encaissement manuel si une session en ligne est ouverte, ni sur une commande annulée. */
+    public function test_manual_payment_guards(): void
+    {
+        [$order, $token] = $this->createOrder();
+        $this->initiate($order->reference, $token)->assertCreated();
+        $commercial = $this->staff(User::ROLE_COMMERCIAL);
+        $this->actingAs($commercial)->postJson("/api/v1/admin/orders/{$order->id}/payments/manual", ['amount_xof' => $order->total_xof, 'method' => 'cash', 'reason' => 'Espèces reçues'])
+            ->assertStatus(409)->assertJsonPath('error.code', 'online_payment_in_progress');
+
+        [$cancelled] = $this->createOrder();
+        $this->transition($commercial, $cancelled, 'cancel', ['reason' => 'Client injoignable'])->assertOk();
+        $this->actingAs($commercial)->postJson("/api/v1/admin/orders/{$cancelled->id}/payments/manual", ['amount_xof' => $cancelled->total_xof, 'method' => 'cash', 'reason' => 'Espèces reçues'])
+            ->assertStatus(409)->assertJsonPath('error.code', 'order_not_payable');
+    }
+
+    /** Audit M3 : les frais ne changent pas pendant qu'un paiement en ligne est en cours. */
+    public function test_delivery_fee_cannot_change_during_online_payment(): void
+    {
+        [$order, $token] = $this->createOrder(null, $this->zone(['delivery_fee_xof' => 1500]));
+        $this->initiate($order->reference, $token)->assertCreated();
+        $other = $this->zone(['delivery_fee_xof' => 3000]);
+        $this->actingAs($this->staff(User::ROLE_COMMERCIAL))->patchJson("/api/v1/admin/orders/{$order->id}/details", ['delivery' => ['zone_id' => $other->id, 'district' => 'Ailleurs'], 'reason' => 'Changement d\'adresse'])
+            ->assertStatus(409)->assertJsonPath('error.code', 'online_payment_in_progress');
+        $this->assertSame(1500, $order->fresh()->delivery_fee_xof);
+    }
+
+    /** Audit M5 : un montant reçu différent du montant attendu clôt la tentative (à examiner), sans boucle. */
+    public function test_amount_mismatch_closes_payment_for_review_once(): void
+    {
+        [$order, $token] = $this->createOrder();
+        $this->initiate($order->reference, $token)->assertCreated();
+        $payment = Payment::query()->firstOrFail();
+        $event = app(SimulatorGateway::class)->completeSession($payment->provider_reference, 'success');
+        $state = Cache::get("payment-simulator:{$payment->provider_reference}");
+        Cache::put("payment-simulator:{$payment->provider_reference}", ['amount' => 100] + $state, now()->addDay());
+
+        $this->signedWebhook($event)->assertOk();
+        $payment->refresh();
+        $this->assertSame('failed', $payment->status->value);
+        $this->assertSame('amount_mismatch', $payment->failure_reason);
+        $this->assertSame(0, $order->fresh()->paid_xof, 'Un montant incohérent n\'est jamais compté comme encaissé.');
+
+        // La tâche planifiée ne reprend plus ce paiement : une seule trace au journal.
+        $payment->update(['created_at' => now()->subHour()]);
+        $this->artisan('mk:reconcile-payments')->expectsOutputToContain('0 paiement(s)')->assertSuccessful();
+        $this->assertSame(1, $order->events()->get()->filter(fn ($e) => ($e->metadata['event'] ?? null) === 'payment.amount_mismatch')->count());
     }
 
     public function test_double_payment_click_reuses_open_session(): void

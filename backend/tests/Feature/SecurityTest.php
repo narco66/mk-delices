@@ -5,7 +5,9 @@ namespace Tests\Feature;
 use App\Domain\Shared\AuditLogger;
 use App\Models\AuditLog;
 use App\Models\User;
+use Database\Seeders\DemoDataSeeder;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
 /** SEC-009 — T-009, T-013, T-019 et contrôles transverses */
@@ -70,6 +72,23 @@ class SecurityTest extends TestCase
         $this->postJson('/api/v1/auth/login', ['email' => 'cible@test.local', 'password' => 'essai-6'], ['X-Forwarded-For' => '198.51.100.77'])
             ->assertStatus(429);
         $this->assertSame(0, AuditLog::query()->where('ip_address', 'like', '203.0.113.%')->count(), "IP forgée enregistrée dans le journal d'audit");
+    }
+
+    /** Audit E11 : en préproduction, l'administrateur de démonstration n'a jamais le mot de passe public. */
+    public function test_demo_admin_never_gets_public_password_outside_local(): void
+    {
+        $this->app['env'] = 'staging';
+        try {
+            $this->seed(DemoDataSeeder::class);
+        } finally {
+            $this->app['env'] = 'testing';
+        }
+        $admin = User::query()->where('email', 'admin@mk-delices.test')->firstOrFail();
+        $this->assertFalse(Hash::check(DemoDataSeeder::DEMO_PASSWORD, $admin->password));
+        $this->postJson('/api/v1/auth/login', ['email' => 'admin@mk-delices.test', 'password' => DemoDataSeeder::DEMO_PASSWORD])->assertStatus(401);
+        // Les comptes aux rôles limités gardent le mot de passe commun de démonstration.
+        $commercial = User::query()->where('email', 'commercial@mk-delices.test')->firstOrFail();
+        $this->assertTrue(Hash::check(DemoDataSeeder::DEMO_PASSWORD, $commercial->password));
     }
 
     public function test_disabled_user_loses_access_immediately(): void

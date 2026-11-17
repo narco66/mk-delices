@@ -3,19 +3,23 @@
 namespace App\Domain\Deliveries;
 
 use App\Domain\Orders\OrderJournal;
+use App\Domain\Orders\OrderPaymentStatus;
 use App\Domain\Orders\OrderStateMachine;
 use App\Domain\Orders\OrderStatus;
 use App\Domain\Payments\GatewayRegistry;
+use App\Domain\Payments\PaymentStatus;
 use App\Domain\Shared\AuditLogger;
 use App\Domain\Shared\DomainException;
 use App\Domain\Shared\Settings;
 use App\Models\DeliveryAssignment;
 use App\Models\DeliveryPartner;
 use App\Models\Order;
+use App\Models\Payment;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Missions de livraison : une seule mission active par commande (index unique partiel + verrou),
@@ -57,7 +61,9 @@ class DeliveryService
                 if ($locked->zone_id && ! $partner->zones()->whereKey($locked->zone_id)->exists()) {
                     throw DomainException::unprocessable('partner_not_eligible', 'Ce livreur ne dessert pas la zone de la commande.');
                 }
-                $cashDue = $locked->payment_method === GatewayRegistry::CASH_ON_DELIVERY ? max(0, $locked->total_xof - $locked->paid_xof) : 0;
+                // Reste dû à encaisser à la remise : paiement à la livraison ou commande saisie sans paiement en ligne
+                // (téléphone, boutique). Une commande en ligne est forcément payée avant d'être acceptée (audit E4).
+                $cashDue = in_array($locked->payment_method, [null, GatewayRegistry::CASH_ON_DELIVERY], true) ? max(0, $locked->total_xof - $locked->paid_xof) : 0;
                 $assignment = DeliveryAssignment::query()->create([
                     'order_id' => $locked->id,
                     'partner_id' => $partner->id,
@@ -138,8 +144,10 @@ class DeliveryService
     /** Courses donnant lieu à rémunération : livrées, ou échouées avec une part due (échec imputable au client). */
     public static function payable(Builder $query): Builder
     {
+        // À régler : une rémunération due OU des espèces encaissées à remettre (audit M8), même si la course
+        // est gratuite pour le livreur — sinon ces espèces resteraient « détenues » indéfiniment.
         return $query->whereIn('status', [AssignmentStatus::Delivered->value, AssignmentStatus::Failed->value])
-            ->where('partner_fee_xof', '>', 0);
+            ->where(fn (Builder $q) => $q->where('partner_fee_xof', '>', 0)->orWhere('cash_collected_xof', '>', 0));
     }
 
     /** Règlement des montants dus aux livreurs. */
@@ -201,7 +209,39 @@ class DeliveryService
             'proof_reference' => mb_substr((string) $data['proof_reference'], 0, 255),
             'cash_collected_xof' => $cash,
         ]);
+        $this->recordCashCollected($mission, $order, $courier, (int) $cash);
         $this->orders->system($order, OrderStatus::Delivered, $courier, null, ['event' => 'delivery.delivered', 'assignment_id' => $mission->id, 'proof_type' => $data['proof_type']]);
+    }
+
+    /**
+     * Audit M7 : l'espèce encaissée à la livraison devient un paiement enregistré (commande payée → facture,
+     * statistiques), plafonné au reste dû. Tout écart avec le montant attendu est tracé pour le règlement.
+     * Appelé sous verrou de la commande, avant la transition « livrée ».
+     */
+    private function recordCashCollected(DeliveryAssignment $mission, Order $order, User $courier, int $cash): void
+    {
+        $credited = min($cash, max(0, $order->total_xof - $order->paid_xof));
+        if ($credited > 0) {
+            $payment = Payment::query()->create([
+                'order_id' => $order->id,
+                'provider' => 'manual:'.GatewayRegistry::CASH_ON_DELIVERY,
+                'status' => PaymentStatus::Succeeded,
+                'amount_xof' => $credited,
+                'currency' => 'XOF',
+                'idempotency_key' => 'cod-'.$mission->id,
+                'is_manual' => true,
+                'recorded_by' => $courier->id,
+                'verified_at' => now(),
+                'provider_status' => 'Encaissé à la livraison', // la mission est référencée par idempotency_key
+            ]);
+            $order->paid_xof += $credited;
+            $order->payment_status = $order->paid_xof >= $order->total_xof ? OrderPaymentStatus::Paid : OrderPaymentStatus::Pending;
+            $this->journal->record($order, 'payment', $courier, null, ['event' => 'payment.cash_collected', 'payment_id' => $payment->id, 'amount_xof' => $credited]);
+        }
+        if ($mission->cash_to_collect_xof > 0 && $cash !== $mission->cash_to_collect_xof) {
+            $this->journal->record($order, 'delivery', $courier, null, ['event' => 'delivery.cash_discrepancy', 'expected_xof' => $mission->cash_to_collect_xof, 'collected_xof' => $cash]);
+            Log::warning('delivery.cash_discrepancy', ['order' => $order->reference, 'expected_xof' => $mission->cash_to_collect_xof, 'collected_xof' => $cash]);
+        }
     }
 
     private function fail(DeliveryAssignment $mission, Order $order, User $courier, array $data): void

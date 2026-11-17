@@ -13,7 +13,7 @@ import { useSeo } from '@/hooks/useSeo'
 import { api, ApiError, newIdempotencyKey } from '@/lib/api'
 import { cn } from '@/lib/cn'
 import { allergenLabel, formatDateTime, formatSlot, formatXof, PAYMENT_LABELS } from '@/lib/format'
-import { orderStorage, trackingUrl } from '@/lib/storage'
+import { ORDER_TOKEN_TTL_DAYS, orderStorage, trackingUrl } from '@/lib/storage'
 import type { PublicOrder } from '@/types/api'
 
 /** Jeton de suivi : paramètre ?t= (lien reçu) ou mémoire locale de cet appareil. */
@@ -559,7 +559,7 @@ function ReviewForm({ order, token }: { order: PublicOrder; token: string | null
 
 /** Liste des commandes passées sur cet appareil (pas de recherche publique par numéro). */
 export function TrackingLookupPage() {
-  const orders = orderStorage.all()
+  const [orders, setOrders] = useState(() => orderStorage.all())
   useSeo({ title: 'Suivre ma commande', noindex: true })
   return (
     <div className="container-page max-w-2xl py-12">
@@ -568,6 +568,7 @@ export function TrackingLookupPage() {
         Utilisez le lien de suivi personnel reçu lors de votre commande. Pour votre sécurité, une commande ne peut pas être recherchée par son seul numéro.
       </p>
       {orders.length > 0 ? (
+        <>
         <ul className="mt-8 space-y-3">
           {orders.map((o) => (
             <li key={o.reference}>
@@ -581,6 +582,21 @@ export function TrackingLookupPage() {
             </li>
           ))}
         </ul>
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-3 text-sm text-cocoa-500">
+          <p>Les liens de suivi sont conservés {ORDER_TOKEN_TTL_DAYS} jours sur cet appareil.</p>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              orderStorage.clear()
+              setOrders([])
+              toast.success('Vos commandes ne sont plus mémorisées sur cet appareil.')
+            }}
+          >
+            Oublier cet appareil
+          </Button>
+        </div>
+        </>
       ) : (
         <EmptyState className="mt-8" title="Aucune commande sur cet appareil" description="Retrouvez vos commandes depuis le lien de suivi, ou créez un compte pour les centraliser." action={<ButtonLink to="/connexion">Se connecter</ButtonLink>} />
       )}

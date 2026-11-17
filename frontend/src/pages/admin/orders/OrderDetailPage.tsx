@@ -244,6 +244,7 @@ export function OrderDetailPage() {
                           {formatXof(r.amount_xof)} · {r.reason}
                         </span>
                         <span className="flex items-center gap-2">
+                          {r.kind === 'overpayment' && <Badge tone="warning">Trop-perçu</Badge>}
                           <StatusPill status={r.status} label={REFUND_STATUS_LABELS[r.status] ?? r.status} />
                           <Link to="/admin/remboursements" className="text-xs font-medium text-raspberry-600 hover:underline">
                             Traiter
@@ -357,7 +358,17 @@ export function OrderDetailPage() {
         onConfirm={(reason) => transition.mutate({ action: pending!, reason })}
       />
       <ReadyModal open={pending === 'mark_ready'} loading={transition.isPending} onClose={() => setPending(null)} onConfirm={() => transition.mutate({ action: 'mark_ready', packaging_checked: true })} />
-      {modal === 'details' && <DetailsModal order={order} onClose={() => setModal(null)} onSaved={(res) => refresh(res)} />}
+      {modal === 'details' && (
+        <DetailsModal
+          order={order}
+          onClose={() => setModal(null)}
+          onSaved={(res) => refresh(res)}
+          onConflict={() => {
+            setModal(null)
+            refetch()
+          }}
+        />
+      )}
       {modal === 'manual' && <ManualPaymentModal orderId={order.id} due={due} onClose={() => setModal(null)} onSaved={() => refetch()} />}
       {modal === 'refund' && <RefundRequestModal orderId={order.id} max={refundable} onClose={() => setModal(null)} onSaved={() => refetch()} />}
     </div>
@@ -505,7 +516,7 @@ function toLocalInput(iso: string | null): string {
   return iso ? iso.slice(0, 16) : ''
 }
 
-function DetailsModal({ order, onClose, onSaved }: { order: AdminOrder; onClose: () => void; onSaved: (res: OrderDetailResponse) => void }) {
+function DetailsModal({ order, onClose, onSaved, onConflict }: { order: AdminOrder; onClose: () => void; onSaved: (res: OrderDetailResponse) => void; onConflict: () => void }) {
   const { data: zones } = useQuery({ queryKey: ['zones'], queryFn: async () => (await api.get<{ data: Zone[] }>('/delivery/zones')).data })
   const { register, handleSubmit, formState, setError } = useForm<DetailsForm>({
     resolver: zodResolver(detailsSchema),
@@ -543,6 +554,8 @@ function DetailsModal({ order, onClose, onSaved }: { order: AdminOrder; onClose:
         Object.entries(e.fieldErrors).forEach(([k, msgs]) => setError(k.replace('customer.', '').replace('delivery.', '') as keyof DetailsForm, { message: msgs[0] }))
       }
       toast.error(errorMessage(e))
+      // Commande modifiée entre-temps (audit M13) : fermer et recharger plutôt que renvoyer une version périmée.
+      if (e instanceof ApiError && e.status === 409) onConflict()
     },
   })
   const err = formState.errors

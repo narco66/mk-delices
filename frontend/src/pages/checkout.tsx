@@ -9,7 +9,7 @@ import { z } from 'zod'
 import { DessertArt } from '@/components/brand/Brand'
 import { Button, ButtonLink } from '@/components/ui/Button'
 import { Badge, Card, Price, QuantityStepper } from '@/components/ui/Display'
-import { EmptyState, errorMessage, Notice, Skeleton, Spinner } from '@/components/ui/Feedback'
+import { EmptyState, ErrorState, errorMessage, Notice, Skeleton, Spinner } from '@/components/ui/Feedback'
 import { Checkbox, Field, Input, Select, Textarea } from '@/components/ui/Form'
 import { useAuth } from '@/features/auth/AuthContext'
 import { useCart } from '@/features/cart/CartContext'
@@ -367,7 +367,7 @@ export function CheckoutPage() {
             {pickupEnabled && (
               <div className="mb-4 grid grid-cols-2 gap-2" role="radiogroup" aria-label="Mode de remise">
                 {(['delivery', 'pickup'] as const).map((f) => (
-                  <label key={f} className={cn('flex min-h-12 cursor-pointer items-center justify-center rounded-[var(--radius-control)] border-2 font-medium', fulfillment === f ? 'border-cocoa-700 bg-cream-50' : 'border-cocoa-100')}>
+                  <label key={f} className={cn('has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-raspberry-500 flex min-h-12 cursor-pointer items-center justify-center rounded-[var(--radius-control)] border-2 font-medium', fulfillment === f ? 'border-cocoa-700 bg-cream-50' : 'border-cocoa-300')}>
                     <input type="radio" value={f} {...register('fulfillment_type')} className="sr-only" />
                     {f === 'delivery' ? 'Livraison' : 'Retrait sur place'}
                   </label>
@@ -406,7 +406,9 @@ export function CheckoutPage() {
               <CalendarClock className="size-5 text-caramel-600" aria-hidden /> 3. Créneau
             </h2>
             <p className="mb-4 text-sm text-cocoa-500">Créneaux disponibles selon le temps de préparation de votre commande.</p>
-            {quoteQuery.isLoading ? (
+            {quoteQuery.isError && !quote ? (
+              <ErrorState error={quoteQuery.error} onRetry={() => quoteQuery.refetch()} />
+            ) : quoteQuery.isLoading ? (
               <Skeleton className="h-28" />
             ) : slots.length === 0 ? (
               <Notice tone="warning">Aucun créneau disponible pour le moment. Contactez-nous par WhatsApp.</Notice>
@@ -423,7 +425,7 @@ export function CheckoutPage() {
                           {daySlots.map((s) => {
                             const active = slot === s.start_at
                             return (
-                              <label key={s.start_at} className={cn('flex min-h-11 cursor-pointer items-center rounded-full border-2 px-4 text-sm font-medium transition', active ? 'border-cocoa-700 bg-cocoa-700 text-cream-50' : 'border-cocoa-100 bg-white hover:border-cocoa-300')}>
+                              <label key={s.start_at} className={cn('has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-raspberry-500 flex min-h-11 cursor-pointer items-center rounded-full border-2 px-4 text-sm font-medium transition', active ? 'border-cocoa-700 bg-cocoa-700 text-cream-50' : 'border-cocoa-300 bg-white hover:border-cocoa-500')}>
                                 <input type="radio" value={s.start_at} {...register('slot_start_at')} className="sr-only" />
                                 {s.label.split(' · ')[1]}
                                 {s.remaining <= 2 && <span className={cn('ml-2 text-xs', active ? 'text-caramel-300' : 'text-raspberry-600')}>{s.remaining} place{s.remaining > 1 ? 's' : ''}</span>}
@@ -475,7 +477,10 @@ export function CheckoutPage() {
         <aside className="lg:sticky lg:top-24 lg:self-start">
           <Card className="p-5 sm:p-6">
             <h2 className="mb-4 text-xl font-semibold">Récapitulatif</h2>
-            {!quote ? (
+            {/* Audit M11 : un devis en échec s'explique et se relance, au lieu d'un chargement sans fin. */}
+            {!quote && quoteQuery.isError ? (
+              <ErrorState error={quoteQuery.error} onRetry={() => quoteQuery.refetch()} />
+            ) : !quote ? (
               <Skeleton className="h-40" />
             ) : (
               <>

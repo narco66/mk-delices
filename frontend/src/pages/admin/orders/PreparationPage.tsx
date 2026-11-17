@@ -8,7 +8,7 @@ import { Badge, Card, Modal, PageHeader } from '@/components/ui/Display'
 import { EmptyState, ErrorState, errorMessage, Notice, Skeleton } from '@/components/ui/Feedback'
 import { Checkbox, Field, Input, Textarea } from '@/components/ui/Form'
 import { useAuth } from '@/features/auth/AuthContext'
-import { api } from '@/lib/api'
+import { api, ApiError } from '@/lib/api'
 import { cn } from '@/lib/cn'
 import { allergenLabel, formatSlot, relativeMinutes } from '@/lib/format'
 
@@ -76,6 +76,11 @@ export function PreparationPage() {
     },
     onError: (e) => {
       toast.error(errorMessage(e))
+      // Conflit (commande modifiée entre-temps) : la fenêtre porte une version périmée → on la ferme (audit M13).
+      if (e instanceof ApiError && e.status === 409) {
+        setReadyFor(null)
+        setUndoFor(null)
+      }
       refetch()
     },
   })

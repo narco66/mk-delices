@@ -42,13 +42,30 @@ export interface StoredOrder {
   createdAt: string
 }
 
+/** Durée de conservation des liens de suivi sur l'appareil (audit M3), alignée sur la validité côté serveur. */
+export const ORDER_TOKEN_TTL_DAYS = 30
+const MAX_STORED_ORDERS = 10
+
+function isFresh(order: StoredOrder): boolean {
+  const created = Date.parse(order.createdAt)
+  return Number.isFinite(created) && Date.now() - created < ORDER_TOKEN_TTL_DAYS * 86_400_000
+}
+
 export const orderStorage = {
-  all: (): StoredOrder[] => safeGet<StoredOrder[]>(ORDERS_KEY) ?? [],
+  /** Commandes mémorisées sur cet appareil, sans celles dont le lien a expiré (purgées au passage). */
+  all(): StoredOrder[] {
+    const stored = safeGet<StoredOrder[]>(ORDERS_KEY) ?? []
+    const fresh = stored.filter(isFresh)
+    if (fresh.length !== stored.length) safeSet(ORDERS_KEY, fresh)
+    return fresh
+  },
   get: (reference: string) => orderStorage.all().find((o) => o.reference === reference) ?? null,
   save(reference: string, token: string) {
     const others = orderStorage.all().filter((o) => o.reference !== reference)
-    safeSet(ORDERS_KEY, [{ reference, token, createdAt: new Date().toISOString() }, ...others].slice(0, 20))
+    safeSet(ORDERS_KEY, [{ reference, token, createdAt: new Date().toISOString() }, ...others].slice(0, MAX_STORED_ORDERS))
   },
+  /** « Oublier cet appareil » : efface tous les liens de suivi mémorisés (téléphone partagé). */
+  clear: () => safeSet(ORDERS_KEY, null),
 }
 
 export function trackingUrl(reference: string, token: string): string {

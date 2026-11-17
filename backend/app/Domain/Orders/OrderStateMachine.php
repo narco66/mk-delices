@@ -152,7 +152,10 @@ class OrderStateMachine
         $order->save();
 
         $this->journal->record($order, 'status', $actor, $reason, $metadata, $from->value, $to->value);
-        DB::afterCommit(fn () => $this->notifier->orderStatusChanged($order->fresh(), $to));
+        // L'annulation d'un démarrage est une correction interne : ni le client ni l'équipe ne sont renotifiés.
+        if (! $undo) {
+            DB::afterCommit(fn () => $this->notifier->orderStatusChanged($order->fresh(), $to));
+        }
         if ($to === OrderStatus::Delivered) {
             DB::afterCommit(fn () => IssueInvoice::dispatch($order->id));
         }

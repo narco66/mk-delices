@@ -47,6 +47,11 @@ class OrangeMoneyGateway implements PaymentGateway
         return null;
     }
 
+    public function supportsPartialRefund(): bool
+    {
+        return false;
+    }
+
     public function validateWebhook(Request $request): WebhookEvent
     {
         throw new InvalidWebhookSignature('Orange Money non configuré.');

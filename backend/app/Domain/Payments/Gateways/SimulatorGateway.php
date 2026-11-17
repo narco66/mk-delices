@@ -57,6 +57,11 @@ class SimulatorGateway implements PaymentGateway
         return 'SIM-RF-'.Str::upper(Str::random(12));
     }
 
+    public function supportsPartialRefund(): bool
+    {
+        return true;
+    }
+
     public function validateWebhook(Request $request): WebhookEvent
     {
         $body = $request->getContent();

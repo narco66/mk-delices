@@ -92,7 +92,7 @@ class InvoiceService
             ], $actor);
 
             // Remboursements déjà effectués avant l'émission : un avoir chacun, pour que le solde soit juste.
-            Refund::query()->where('order_id', $locked->id)->where('status', 'succeeded')->orderBy('completed_at')->get()
+            Refund::query()->where('order_id', $locked->id)->where('status', 'succeeded')->where('kind', 'sale')->orderBy('completed_at')->get()
                 ->each(fn (Refund $refund) => $this->createCreditNote($invoice, $refund, $actor));
 
             return $invoice;
@@ -111,7 +111,8 @@ class InvoiceService
         $creditNote = DB::transaction(function () use ($refund, $actor) {
             Order::query()->lockForUpdate()->findOrFail($refund->order_id);
             $invoice = Invoice::query()->where('order_id', $refund->order_id)->where('type', Invoice::TYPE_INVOICE)->first();
-            if (! $invoice || $refund->status !== 'succeeded') {
+            // Un trop-perçu restitué ne réduit pas la vente : pas d'avoir (audit E2).
+            if (! $invoice || $refund->status !== 'succeeded' || $refund->kind !== 'sale') {
                 return null;
             }
 

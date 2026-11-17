@@ -6,12 +6,14 @@ use App\Domain\Payments\PaymentService;
 use App\Domain\Payments\PaymentStatus;
 use App\Domain\Shared\AuditLogger;
 use App\Domain\Shared\DomainException;
+use App\Http\Controllers\HealthController;
 use App\Models\Cart;
 use App\Models\ContentPage;
 use App\Models\IdempotencyKey;
 use App\Models\Order;
 use App\Models\Payment;
 use App\Models\User;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schedule;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rules\Password;
@@ -62,6 +64,9 @@ Schedule::command('mk:reconcile-payments')->everyFiveMinutes()->withoutOverlappi
 Schedule::command('queue:prune-failed', ['--hours' => 720])->dailyAt('03:45')->timezone('Africa/Dakar');
 Schedule::command('mk:purge-expired')->dailyAt('03:30')->timezone('Africa/Dakar');
 Schedule::command('sanctum:prune-expired', ['--hours' => 24])->dailyAt('03:40')->timezone('Africa/Dakar');
+// Supervision (audit E9) : battement du planificateur lu par /health, alerte si la file de tâches déborde.
+Schedule::call(fn () => Cache::put(HealthController::SCHEDULER_HEARTBEAT, now()->getTimestamp(), now()->addHour()))->everyMinute()->name('health-heartbeat');
+Schedule::command('queue:monitor', ['database:default', '--max' => 50])->everyFiveMinutes();
 
 /** Marque comme commandes de test celles créées par les tests E2E (prénom « E2E »), hors production uniquement. */
 Artisan::command('mk:flag-test-orders {--first-name=E2E}', function () {

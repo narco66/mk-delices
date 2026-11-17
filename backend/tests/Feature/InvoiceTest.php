@@ -105,10 +105,19 @@ class InvoiceTest extends TestCase
         $this->assertSame(1, (int) DB::table('invoice_sequences')->where('series', 'TEST-FA')->value('last_number'));
 
         try {
-            DB::table('invoices')->where('id', $invoice->id)->update(['total_ttc_xof' => 1]);
+            DB::transaction(fn () => DB::table('invoices')->where('id', $invoice->id)->update(['total_ttc_xof' => 1]));
             $this->fail('Une facture émise ne doit pas pouvoir être modifiée.');
         } catch (QueryException $e) {
             $this->assertStringContainsString('immuable', $e->getMessage());
+        }
+        // Audit I7 : pas davantage de vidage global de la table (TRUNCATE).
+        foreach (['invoices', 'audit_logs', 'order_events'] as $table) {
+            try {
+                DB::transaction(fn () => DB::statement("TRUNCATE {$table} CASCADE"));
+                $this->fail("TRUNCATE {$table} aurait dû être refusé.");
+            } catch (QueryException $e) {
+                $this->assertStringContainsString('immuable', $e->getMessage());
+            }
         }
     }
 

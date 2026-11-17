@@ -12,7 +12,17 @@ use Illuminate\Support\Facades\DB;
  */
 class StatsService
 {
-    private const PAID = "('paid','partially_refunded','refunded')";
+    /**
+     * Vente réelle (audit lot 3) : commande payée, non annulée ni refusée (une commande annulée encore
+     * « payée » attend son remboursement, ce n'est pas du chiffre d'affaires) et pas intégralement remboursée.
+     */
+    private const SALE = "payment_status IN ('paid','partially_refunded') AND status NOT IN ('cancelled','rejected')";
+
+    /** Même filtre, sur la table aliasée « o ». */
+    private const SALE_O = "o.payment_status IN ('paid','partially_refunded') AND o.status NOT IN ('cancelled','rejected')";
+
+    /** Montant net retenu par vente : encaissé moins remboursé, jamais au-delà du total (trop-perçu exclu). */
+    private const NET = 'LEAST(paid_xof - refunded_xof, total_xof)';
 
     public function __construct(private readonly Settings $settings) {}
 
@@ -22,8 +32,8 @@ class StatsService
         $range = [$from->utc(), $to->utc()];
 
         $sales = DB::selectOne(
-            'SELECT count(*) FILTER (WHERE payment_status IN '.self::PAID.') AS paid_orders,
-                    coalesce(sum(paid_xof - refunded_xof) FILTER (WHERE payment_status IN '.self::PAID.'), 0) AS revenue_net,
+            'SELECT count(*) FILTER (WHERE '.self::SALE.') AS paid_orders,
+                    coalesce(sum('.self::NET.') FILTER (WHERE '.self::SALE.'), 0) AS revenue_net,
                     count(*) FILTER (WHERE status <> \'draft\') AS confirmed_orders,
                     count(*) FILTER (WHERE payment_status IN (\'refunded\',\'partially_refunded\')) AS refunded_orders,
                     count(*) FILTER (WHERE status = \'cancelled\') AS cancelled_orders,
@@ -97,7 +107,7 @@ class StatsService
     {
         $rows = DB::select(
             'SELECT d::date AS day,
-                    coalesce(sum(o.paid_xof - o.refunded_xof) FILTER (WHERE o.payment_status IN '.self::PAID.'), 0)::bigint AS revenue_net,
+                    coalesce(sum(LEAST(o.paid_xof - o.refunded_xof, o.total_xof)) FILTER (WHERE '.self::SALE_O.'), 0)::bigint AS revenue_net,
                     count(o.id) FILTER (WHERE o.status <> \'draft\')::int AS orders
              FROM generate_series(?::date, ?::date, interval \'1 day\') d
              LEFT JOIN orders o ON o.is_test = false AND (coalesce(o.confirmed_at, o.created_at) AT TIME ZONE ?)::date = d::date
@@ -113,7 +123,7 @@ class StatsService
         $rows = DB::select(
             'SELECT i.product_id, max(i.product_name_snapshot) AS name, sum(i.qty)::int AS quantity, sum(i.line_total_xof)::bigint AS revenue
              FROM order_items i JOIN orders o ON o.id = i.order_id
-             WHERE o.is_test = false AND o.payment_status IN '.self::PAID.' AND coalesce(o.confirmed_at, o.created_at) BETWEEN ? AND ?
+             WHERE o.is_test = false AND '.self::SALE_O.' AND coalesce(o.confirmed_at, o.created_at) BETWEEN ? AND ?
              GROUP BY i.product_id ORDER BY quantity DESC LIMIT 5',
             $range,
         );

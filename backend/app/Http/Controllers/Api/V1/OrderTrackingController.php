@@ -122,7 +122,8 @@ class OrderTrackingController extends Controller
     private function order(Request $request, string $reference): Order
     {
         $user = $request->user();
-        if ($user?->customer && ! $request->hasHeader('X-Tracking-Token')) {
+        // Compte désactivé (audit lot 3) : plus d'accès par le compte ; seul le lien de suivi personnel reste valable.
+        if ($user?->is_active && $user->customer && ! $request->hasHeader('X-Tracking-Token')) {
             $order = Order::query()->where('reference', strtoupper($reference))->where('customer_id', $user->customer->id)->first();
             if ($order) {
                 return $order;

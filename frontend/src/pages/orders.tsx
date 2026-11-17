@@ -343,10 +343,31 @@ export function TrackingPage() {
     },
     onError: (e) => toast.error(errorMessage(e)),
   })
+  // L'onglet est ouvert SYNCHRONEMENT au clic (sinon bloqué comme fenêtre surgissante, iOS notamment),
+  // puis dirigé vers WhatsApp une fois le message préparé ; refermé en cas d'erreur (audit lot 3).
   const whatsapp = useMutation({
-    mutationFn: async () => (await api.post<{ data: { whatsapp_url: string | null } }>(`/orders/${reference}/whatsapp-draft`, {}, { headers: trackingHeaders(token) })).data,
-    onSuccess: (d) => (d.whatsapp_url ? window.open(d.whatsapp_url, '_blank', 'noopener') : toast.error('Numéro WhatsApp non configuré.')),
+    mutationFn: async (win: Window | null) => {
+      const { data } = await api.post<{ data: { whatsapp_url: string | null } }>(`/orders/${reference}/whatsapp-draft`, {}, { headers: trackingHeaders(token) })
+      return { url: data.whatsapp_url, win }
+    },
+    onSuccess: ({ url, win }) => {
+      if (url && win) win.location.href = url
+      else {
+        win?.close()
+        if (!url) toast.error('Numéro WhatsApp non configuré.')
+        else window.location.href = url
+      }
+    },
+    onError: (e, win) => {
+      win?.close()
+      toast.error(errorMessage(e))
+    },
   })
+  const contactWhatsApp = () => {
+    const win = window.open('about:blank', '_blank')
+    if (win) win.opener = null // l'onglet WhatsApp ne peut pas agir sur cette page
+    whatsapp.mutate(win)
+  }
 
   if (isLoading) return <Spinner />
   if (error || !order) return <OrderNotFound error={error} />
@@ -471,7 +492,7 @@ export function TrackingPage() {
       {order.can_review && <ReviewForm order={order} token={token} />}
 
       <div className="mt-8 flex flex-wrap gap-3">
-        <Button variant="whatsapp" onClick={() => whatsapp.mutate()} loading={whatsapp.isPending} icon={<MessageCircle className="size-5" />}>
+        <Button variant="whatsapp" onClick={contactWhatsApp} loading={whatsapp.isPending} icon={<MessageCircle className="size-5" />}>
           Contacter MK Délices
         </Button>
         {order.can_cancel && (

@@ -41,11 +41,11 @@ class OrderResource extends JsonResource
             'promotion_code' => $this->promotion_code,
             'customer' => [
                 'first_name' => $snapshot['first_name'] ?? null,
-                'last_name' => $snapshot['last_name'] ?? null,
+                'last_name' => $canSeeContact ? ($snapshot['last_name'] ?? null) : null,
                 'phone' => $canSeeContact ? ($snapshot['phone'] ?? null) : Phone::mask($snapshot['phone'] ?? null),
                 'email' => $canSeeContact ? ($snapshot['email'] ?? null) : null,
             ],
-            'customer_id' => $this->customer_id,
+            'customer_id' => $this->when($canSeeContact, $this->customer_id),
             'zone' => $this->whenLoaded('zone', fn () => $this->zone ? ['id' => $this->zone->id, 'name' => $this->zone->name] : null),
             'address' => $canSeeContact ? $this->address_snapshot : ($this->address_snapshot ? ['zone_name' => $this->address_snapshot['zone_name'] ?? null, 'district' => $this->address_snapshot['district'] ?? null] : null),
             'slot_start_at' => $this->slot_start_at?->toIso8601ZuluString(),

@@ -378,7 +378,7 @@ export function ProductPage() {
           <ul className="mt-5 grid gap-4 md:grid-cols-2">
             {product.rating.items.map((r, i) => (
               <li key={i} className="rounded-[var(--radius-card)] bg-white p-5 shadow-soft">
-                <p className="text-caramel-500" aria-label={`${r.stars} étoiles sur 5`}>
+                <p className="text-caramel-500" role="img" aria-label={`${r.stars} étoiles sur 5`}>
                   {'★'.repeat(r.stars)}
                   <span className="text-cocoa-100">{'★'.repeat(5 - r.stars)}</span>
                 </p>

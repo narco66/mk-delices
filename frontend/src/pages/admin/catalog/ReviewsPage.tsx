@@ -81,7 +81,7 @@ export function ReviewsPage() {
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div>
                     <p className="font-semibold">
-                      {r.author_name} · <span aria-label={`${r.stars} étoiles sur 5`}>{'★'.repeat(r.stars)}<span className="text-cocoa-100">{'★'.repeat(5 - r.stars)}</span></span>
+                      {r.author_name} · <span role="img" aria-label={`${r.stars} étoiles sur 5`}>{'★'.repeat(r.stars)}<span className="text-cocoa-100">{'★'.repeat(5 - r.stars)}</span></span>
                     </p>
                     <p className="text-xs text-cocoa-500">
                       {r.product?.name ?? 'Produit supprimé'} ·{' '}

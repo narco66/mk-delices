@@ -71,7 +71,7 @@ Les anciens fichiers JS/CSS sont conservés à chaque déploiement : les onglets
 | PostgreSQL | **18** (dépôt PGDG), y compris le client `pg_dump` 18 | Le client 16 d'Ubuntu refuse de sauvegarder un serveur 18. Rôles `mk_app` (application) et `mk_backup` (lecture seule) |
 | Node.js | ≥ 20.19 (Vite 8) | Uniquement pour le build pendant le déploiement |
 | Composer | 2.x | |
-| Nginx | `deploy/nginx/*.conf`, certificat `certbot --nginx` | Compression gzip incluse ; préproduction : `htpasswd` + liste blanche d'IP |
+| Nginx | `deploy/nginx/*.conf` + `deploy/nginx/snippets/mk-security-headers.conf` → `/etc/nginx/snippets/`, certificat `certbot --nginx -d <domaine> -d www.<domaine>` | Compression gzip incluse ; `www` redirigé vers le domaine principal ; préproduction : `htpasswd` + liste blanche d'IP. Vérifier avec `nginx -t` |
 | Supervisor | `deploy/supervisor/mk-delices-worker.conf` | `mkdir -p /var/log/mk-delices && chown www-data /var/log/mk-delices` |
 | Cron | `deploy/cron/mk-delices` → `/etc/cron.d/` | Planificateur Laravel (chaque minute) et sauvegarde (02:00) |
 | Sauvegardes | `gpg`, `rclone` ; `/etc/mk-delices/backup.env` ; `mkdir -p /var/lib/mk-delices` | Horodatage lu par `/health` (`HEALTH_BACKUP_STATUS_FILE`) |

@@ -38,6 +38,10 @@ export function RefundsPage() {
       setDialog(null)
       setText('')
       queryClient.invalidateQueries({ queryKey: ['admin', 'refunds'] })
+      // Un remboursement effectué émet un avoir et modifie la commande et ses paiements.
+      queryClient.invalidateQueries({ queryKey: ['admin', 'invoices'] })
+      queryClient.invalidateQueries({ queryKey: ['admin', 'order'] })
+      queryClient.invalidateQueries({ queryKey: ['admin', 'payments'] })
     },
     onError: (e) => toast.error(errorMessage(e)),
   })

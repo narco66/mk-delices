@@ -222,7 +222,19 @@ export function AccountPage() {
           Se déconnecter
         </Button>
       </div>
-      <div className="mt-8 flex gap-2 overflow-x-auto" role="tablist">
+      {/* Onglets accessibles : flèches gauche/droite, onglet relié à son panneau (audit lot 3). */}
+      <div
+        className="mt-8 flex gap-2 overflow-x-auto"
+        role="tablist"
+        aria-label="Mon compte"
+        onKeyDown={(e) => {
+          if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return
+          const keys = ['orders', 'profile', 'addresses'] as const
+          const next = keys[(keys.indexOf(tab) + (e.key === 'ArrowRight' ? 1 : keys.length - 1)) % keys.length]
+          setTab(next)
+          document.getElementById(`tab-${next}`)?.focus()
+        }}
+      >
         {(
           [
             ['orders', 'Mes commandes', <Package key="o" className="size-4" />],
@@ -230,13 +242,13 @@ export function AccountPage() {
             ['addresses', 'Adresses', <MapPin key="a" className="size-4" />],
           ] as const
         ).map(([key, label, icon]) => (
-          <button key={key} role="tab" aria-selected={tab === key} onClick={() => setTab(key)} className={cn('flex min-h-11 shrink-0 items-center gap-2 rounded-full px-4 text-sm font-medium', tab === key ? 'bg-cocoa-700 text-cream-50' : 'bg-white hover:bg-cream-200')}>
+          <button key={key} id={`tab-${key}`} role="tab" aria-selected={tab === key} aria-controls="panneau-compte" tabIndex={tab === key ? 0 : -1} onClick={() => setTab(key)} className={cn('flex min-h-11 shrink-0 items-center gap-2 rounded-full px-4 text-sm font-medium', tab === key ? 'bg-cocoa-700 text-cream-50' : 'bg-white hover:bg-cream-200')}>
             {icon}
             {label}
           </button>
         ))}
       </div>
-      <div className="mt-6">
+      <div className="mt-6" id="panneau-compte" role="tabpanel" aria-labelledby={`tab-${tab}`}>
         {tab === 'orders' && <AccountOrders />}
         {tab === 'profile' && <AccountProfile />}
         {tab === 'addresses' && <AccountAddresses />}
@@ -337,7 +349,11 @@ function AccountAddresses() {
   })
   const remove = useMutation({
     mutationFn: (id: string) => api.delete(`/account/addresses/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['account', 'addresses'] }),
+    onSuccess: () => {
+      toast.success('Adresse supprimée')
+      queryClient.invalidateQueries({ queryKey: ['account', 'addresses'] })
+    },
+    onError: (e) => toast.error(errorMessage(e)),
   })
 
   return (
@@ -354,7 +370,7 @@ function AccountAddresses() {
               </p>
               {a.landmark && <p className="text-sm text-cocoa-500">{a.landmark}</p>}
             </div>
-            <button type="button" onClick={() => remove.mutate(a.id)} className="grid size-10 place-items-center rounded-full text-cocoa-400 hover:bg-error-50 hover:text-error-600" aria-label="Supprimer l'adresse">
+            <button type="button" onClick={() => window.confirm(`Supprimer l'adresse « ${a.label ?? a.district} » ?`) && remove.mutate(a.id)} disabled={remove.isPending} className="grid size-10 place-items-center rounded-full text-cocoa-400 hover:bg-error-50 hover:text-error-600" aria-label="Supprimer l'adresse">
               <Trash2 className="size-4" />
             </button>
           </Card>

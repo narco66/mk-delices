@@ -39,6 +39,7 @@ class FinanceController extends Controller
 
     public function refundIndex(Request $request): AnonymousResourceCollection
     {
+        $request->validate(['status' => ['nullable', 'string', 'max:100']]); // ex. status[]=x → 422 au lieu de 500
         $refunds = Refund::query()->with(['order:id,reference', 'requester:id,name', 'approver:id,name'])
             ->when($request->input('status'), fn ($q, $s) => $q->whereIn('status', explode(',', $s)))
             ->latest()->paginate(50);

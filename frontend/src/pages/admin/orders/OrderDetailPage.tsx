@@ -283,7 +283,7 @@ export function OrderDetailPage() {
           <Card className="space-y-3 p-5 text-sm">
             <h2 className="text-lg font-semibold">Client & livraison</h2>
             <Info label="Destinataire" value={customerName} />
-            <Info label="Téléphone" value={order.customer.phone ? <a href={`tel:${order.customer.phone}`} className="text-raspberry-600 hover:underline">{order.customer.phone}</a> : '—'} />
+            <Info label="Téléphone" value={order.customer.phone ? (order.customer.phone.includes('*') ? order.customer.phone : <a href={`tel:${order.customer.phone}`} className="text-raspberry-600 hover:underline">{order.customer.phone}</a>) : '—'} />
             {order.customer.email && <Info label="Email" value={order.customer.email} />}
             <Info label="Mode" value={order.fulfillment_type === 'pickup' ? 'Retrait sur place' : 'Livraison'} />
             {order.address && (

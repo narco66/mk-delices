@@ -182,8 +182,8 @@ class CheckoutService
                 throw DomainException::unprocessable('details_incomplete', 'Choisissez un créneau avant confirmation.');
             }
             $this->repriceFromCatalog($locked);
-            $lead = 0; // la confirmation commerciale peut retenir tout créneau futur ouvert et non saturé
-            $this->slots->reserve($locked->slot_start_at->toIso8601ZuluString(), $lead, $locked->id);
+            // Même délai de préparation que pour une commande en ligne (BR-004, audit lot 3).
+            $this->slots->reserve($locked->slot_start_at->toIso8601ZuluString(), $this->leadMinutesFor($locked), $locked->id);
             if ($locked->customer_id === null) {
                 $customer = Customer::query()->create([
                     'first_name' => $locked->customer_snapshot['first_name'],
@@ -246,7 +246,7 @@ class CheckoutService
             if (! empty($data['slot_start_at'])) {
                 $slot = $locked->status === OrderStatus::Draft
                     ? ['start' => CarbonImmutable::parse($data['slot_start_at']), 'end' => CarbonImmutable::parse($data['slot_start_at'])->addMinutes((int) $this->settings->get('ordering.slot_duration_minutes', 120))]
-                    : $this->slots->reserve($data['slot_start_at'], 0, $locked->id);
+                    : $this->slots->reserve($data['slot_start_at'], $this->leadMinutesFor($locked), $locked->id);
                 $locked->slot_start_at = $slot['start'];
                 $locked->slot_end_at = $slot['end'];
             }
@@ -286,6 +286,18 @@ class CheckoutService
         Promotion::query()->whereKey($promotion->id)->increment('used_count');
 
         return min($promotions->discountFor($promotion, $subtotal), $subtotal);
+    }
+
+    /**
+     * Délai minimal avant le créneau : délai général, ou temps de préparation du produit le plus long, plus le
+     * délai supplémentaire de la zone — exactement comme le devis d'une commande en ligne (QuoteService).
+     */
+    private function leadMinutesFor(Order $order): int
+    {
+        $prep = (int) $order->items()->max('prep_minutes_snapshot');
+        $extra = $order->zone_id ? (int) DeliveryZone::query()->whereKey($order->zone_id)->value('extra_lead_minutes') : 0;
+
+        return max((int) $this->settings->get('ordering.min_lead_minutes', 240), $prep) + $extra;
     }
 
     private function repriceFromCatalog(Order $order): void

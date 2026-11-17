@@ -64,6 +64,10 @@ class ProductImageUploadTest extends TestCase
         $this->actingAs($this->staff(User::ROLE_COMMERCIAL))->post("/api/v1/admin/products/{$product->id}/images", [
             'image' => UploadedFile::fake()->image('mini.png', 120, 120), 'alt' => 'Trop petite',
         ], ['Accept' => 'application/json'])->assertStatus(422)->assertJsonPath('error.code', 'invalid_image_dimensions');
+        // Trop grande : refusée sur la foi de l'en-tête, avant tout décodage (mémoire protégée).
+        $this->post("/api/v1/admin/products/{$product->id}/images", [
+            'image' => UploadedFile::fake()->image('immense.png', 5200, 450), 'alt' => 'Trop grande',
+        ], ['Accept' => 'application/json'])->assertStatus(422)->assertJsonPath('error.code', 'invalid_image_dimensions');
 
         $this->actingAs($this->staff(User::ROLE_PREPARATEUR))->post("/api/v1/admin/products/{$product->id}/images", [
             'image' => UploadedFile::fake()->image('ok.jpg', 800, 800), 'alt' => 'Interdit',

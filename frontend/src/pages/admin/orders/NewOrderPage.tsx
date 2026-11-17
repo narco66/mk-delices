@@ -33,6 +33,8 @@ export function NewOrderPage() {
   const [slot, setSlot] = useState('')
   const [method, setMethod] = useState('')
   const [promo, setPromo] = useState('')
+  // Saisie du code promo : appliqué (nouveau devis) en quittant le champ ou sur Entrée, pas à chaque frappe.
+  const [promoInput, setPromoInput] = useState('')
   const [variantId, setVariantId] = useState('')
   const [qty, setQty] = useState(1)
   const [errors, setErrors] = useState<Record<string, string[]>>({})
@@ -176,10 +178,10 @@ export function NewOrderPage() {
                         <p className="text-xs text-cocoa-500">{formatXof(l.unit_price_xof)} / u.</p>
                       </div>
                       <div className="flex items-center gap-2">
-                        <Button size="sm" variant="ghost" aria-label={`Retirer une unité de ${l.product_name}`} onClick={() => changeItem.mutate({ id: l.item_id, quantity: l.quantity - 1 })} icon={<Minus className="size-4" />} />
+                        <Button size="sm" variant="ghost" aria-label={`Retirer une unité de ${l.product_name}`} disabled={changeItem.isPending || quote.isFetching} onClick={() => changeItem.mutate({ id: l.item_id, quantity: l.quantity - 1 })} icon={<Minus className="size-4" />} />
                         <span className="w-8 text-center tabular-nums">{l.quantity}</span>
-                        <Button size="sm" variant="ghost" aria-label={`Ajouter une unité de ${l.product_name}`} onClick={() => changeItem.mutate({ id: l.item_id, quantity: l.quantity + 1 })} icon={<Plus className="size-4" />} />
-                        <Button size="sm" variant="ghost" aria-label={`Supprimer ${l.product_name}`} onClick={() => changeItem.mutate({ id: l.item_id, quantity: 0 })} icon={<Trash2 className="size-4" />} />
+                        <Button size="sm" variant="ghost" aria-label={`Ajouter une unité de ${l.product_name}`} disabled={changeItem.isPending || quote.isFetching} onClick={() => changeItem.mutate({ id: l.item_id, quantity: l.quantity + 1 })} icon={<Plus className="size-4" />} />
+                        <Button size="sm" variant="ghost" aria-label={`Supprimer ${l.product_name}`} disabled={changeItem.isPending} onClick={() => changeItem.mutate({ id: l.item_id, quantity: 0 })} icon={<Trash2 className="size-4" />} />
                         <span className="w-24 text-right font-semibold tabular-nums">{formatXof(l.line_total_xof)}</span>
                       </div>
                     </li>
@@ -269,7 +271,7 @@ export function NewOrderPage() {
               {(p) => (
                 <Select {...p} value={method} onChange={(e) => setMethod(e.target.value)}>
                   <option value="">Encaissement à enregistrer (espèces, transfert…)</option>
-                  {(config?.payment_methods ?? []).map((m) => (
+                  {(config?.payment_methods ?? []).filter((m) => m.online).map((m) => (
                     <option key={m.code} value={m.code}>
                       Lien de paiement : {m.label}
                     </option>
@@ -277,7 +279,23 @@ export function NewOrderPage() {
                 </Select>
               )}
             </Field>
-            <Field label="Code promo">{(p) => <Input {...p} value={promo} onChange={(e) => setPromo(e.target.value.toUpperCase())} />}</Field>
+            <Field label="Code promo" hint="Appliqué en quittant le champ ou avec Entrée">
+              {(p) => (
+                <Input
+                  {...p}
+                  value={promoInput}
+                  maxLength={40}
+                  onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
+                  onBlur={() => setPromo(promoInput.trim())}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      setPromo(promoInput.trim())
+                    }
+                  }}
+                />
+              )}
+            </Field>
             <Field label="Note interne" hint="Visible uniquement par l'équipe">
               {(p) => <Textarea {...p} rows={2} value={form.internal_notes} onChange={set('internal_notes')} />}
             </Field>

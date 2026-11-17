@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1\Admin;
 
 use App\Domain\Reporting\StatsService;
 use App\Domain\Shared\AuditLogger;
+use App\Domain\Shared\DomainException;
 use App\Domain\Shared\Settings;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\OrderResource;
@@ -160,6 +161,11 @@ class BackOfficeController extends Controller
         if ($user->exists && $user->id === $request->user()->id && (! ($data['is_active'] ?? true) || ! in_array(User::ROLE_ADMIN, $data['roles'], true))) {
             abort(422, 'Vous ne pouvez pas retirer vos propres droits administrateur.');
         }
+        // Audit lot 3 : cet écran gère l'équipe uniquement. Un compte client ou livreur ne peut pas y être
+        // converti en compte d'équipe ni voir son mot de passe changé (livreurs : écran Livreurs).
+        if ($user->exists && $user->hasAnyRole([User::ROLE_CLIENT, User::ROLE_LIVREUR])) {
+            throw DomainException::unprocessable('not_staff_account', 'Ce compte n\'est pas un compte de l\'équipe : il se gère depuis l\'écran Livreurs ou par le client lui-même.');
+        }
         $before = $user->exists ? ['roles' => $user->getRoleNames(), 'is_active' => $user->is_active] : null;
         DB::transaction(function () use ($user, $data) {
             $user->fill(['name' => $data['name'], 'email' => mb_strtolower($data['email']), 'phone' => $data['phone'] ?? null, 'is_active' => $data['is_active'] ?? true]);
@@ -169,7 +175,7 @@ class BackOfficeController extends Controller
             $user->save();
             $user->syncRoles($data['roles']);
         });
-        $this->audit->log($before ? 'user.updated' : 'user.created', $user, $before, ['roles' => $data['roles'], 'is_active' => $user->is_active]);
+        $this->audit->log($before ? 'user.updated' : 'user.created', $user, $before, ['roles' => $data['roles'], 'is_active' => $user->is_active, 'password_changed' => ! empty($data['password'])]);
 
         return response()->json(['data' => $user->load('roles:id,name')], $before ? 200 : 201);
     }

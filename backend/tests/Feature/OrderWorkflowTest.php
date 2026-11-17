@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Domain\Shared\Settings;
 use App\Models\Order;
 use App\Models\OrderEvent;
 use App\Models\Promotion;
@@ -124,6 +125,38 @@ class OrderWorkflowTest extends TestCase
         ])->assertOk();
         $this->transition($commercial, $order, 'submit')->assertOk()->assertJsonPath('data.status', 'pending_confirmation')
             ->assertJsonPath('data.delivery_fee_xof', 1500);
+    }
+
+    /** Lot 3 : l'usage d'un code promo est rendu quand la commande est annulée. */
+    public function test_cancelled_order_gives_back_promotion_usage(): void
+    {
+        $promo = Promotion::query()->create(['code' => 'RENDU', 'name' => '10 %', 'discount_type' => 'percent', 'discount_value' => 10, 'usage_limit' => 1, 'active' => true]);
+        [$order] = $this->createOrder($this->variant(['price_xof' => 5000]), null, ['promotion_code' => 'RENDU']);
+        $this->assertSame(1, $promo->fresh()->used_count);
+
+        $this->transition($this->staff(User::ROLE_COMMERCIAL), $order, 'cancel', ['reason' => 'Client injoignable'])->assertOk();
+        $this->assertSame(0, $promo->fresh()->used_count, 'Le code redevient utilisable par un autre client.');
+    }
+
+    /** Lot 3 (BR-004) : confirmer un brouillon respecte le délai de préparation. */
+    public function test_draft_confirmation_respects_preparation_lead_time(): void
+    {
+        app(Settings::class)->set('ordering.min_lead_minutes', 240);
+        $zone = $this->zone();
+        $cart = $this->cartWith($this->variant(), 1);
+        $reference = $this->postJson('/api/v1/checkout/whatsapp-draft', [], $this->cartHeaders(...$cart))->json('data.reference');
+        $order = Order::query()->where('reference', $reference)->firstOrFail();
+        $commercial = $this->staff(User::ROLE_COMMERCIAL);
+
+        // Créneau dans moins de 4 h : refusé à la confirmation.
+        $tooSoon = now()->addHour()->startOfHour()->toIso8601ZuluString();
+        $this->actingAs($commercial)->patchJson("/api/v1/admin/orders/{$order->id}/details", [
+            'customer' => ['first_name' => 'Fatou', 'phone' => '781234567'],
+            'delivery' => ['zone_id' => $zone->id, 'district' => 'Quartier fictif'],
+            'slot_start_at' => $tooSoon,
+        ])->assertOk();
+        $this->transition($commercial, $order, 'submit')->assertStatus(409)->assertJsonPath('error.code', 'slot_unavailable');
+        $this->assertSame('draft', $order->fresh()->status->value);
     }
 
     /** Audit M4 : le code promo d'un brouillon WhatsApp est revérifié et compté à la confirmation. */

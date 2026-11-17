@@ -116,7 +116,7 @@ class ReferenceDataController extends Controller
 
             return $partner;
         });
-        $this->audit->log($id ? 'partner.updated' : 'partner.created', $partner, null, ['display_name' => $partner->display_name, 'zones' => $data['zone_ids'], 'active' => $partner->active]);
+        $this->audit->log($id ? 'partner.updated' : 'partner.created', $partner, null, ['display_name' => $partner->display_name, 'zones' => $data['zone_ids'], 'active' => $partner->active, 'password_changed' => ! empty($data['password'])]);
 
         return response()->json(['data' => $partner->load('zones:id,name', 'user:id,email,is_active')], $id ? 200 : 201);
     }

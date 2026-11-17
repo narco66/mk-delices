@@ -23,20 +23,30 @@ class ProductImageService
 
     private const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/webp'];
 
+    /** Côté maximal accepté (pixels) : borne la mémoire nécessaire au décodage. */
+    private const MAX_SIDE = 5000;
+
     public function store(Product $product, UploadedFile $file, string $alt, bool $illustrative = false): ProductImage
     {
         $mime = $file->getMimeType();
         if (! in_array($mime, self::ALLOWED_MIME, true)) {
             throw DomainException::unprocessable('invalid_image', 'Format d\'image non autorisé (JPEG, PNG ou WebP uniquement).');
         }
+        // Dimensions lues dans l'en-tête AVANT décodage (audit lot 3) : une image très compressée mais immense
+        // (« bombe de décompression ») ne peut plus épuiser la mémoire de PHP. 5 000 px suffisent largement au site.
+        $size = @getimagesize($file->getRealPath());
+        if ($size === false) {
+            throw DomainException::unprocessable('invalid_image', 'Le fichier n\'est pas une image valide.');
+        }
+        [$width, $height] = $size;
+        if ($width < 400 || $height < 400 || $width > self::MAX_SIDE || $height > self::MAX_SIDE) {
+            throw DomainException::unprocessable('invalid_image_dimensions', 'L\'image doit mesurer entre 400 et '.self::MAX_SIDE.' pixels de côté.');
+        }
         try {
             $manager = ImageManager::usingDriver(Driver::class);
             $image = $manager->decodePath($file->getRealPath());
         } catch (Throwable) {
             throw DomainException::unprocessable('invalid_image', 'Le fichier n\'est pas une image valide.');
-        }
-        if ($image->width() < 400 || $image->height() < 400 || $image->width() > 8000 || $image->height() > 8000) {
-            throw DomainException::unprocessable('invalid_image_dimensions', 'L\'image doit mesurer entre 400 et 8000 pixels de côté.');
         }
 
         $base = 'products/'.$product->id.'/'.Str::uuid();

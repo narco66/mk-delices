@@ -8,6 +8,7 @@ use App\Domain\Shared\DomainException;
 use App\Domain\Shared\Settings;
 use App\Jobs\IssueInvoice;
 use App\Models\Order;
+use App\Models\Promotion;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 
@@ -213,6 +214,10 @@ class OrderStateMachine
         // Le stock n'est restitué que si la production n'a pas commencé (produits périssables).
         if (in_array($order->status, [OrderStatus::PendingConfirmation, OrderStatus::Accepted], true)) {
             $this->stock->releaseForOrder($order);
+        }
+        // Usage du code promo rendu (audit lot 3) : un brouillon ne l'a jamais consommé, une commande confirmée oui.
+        if ($order->promotion_id && $order->status !== OrderStatus::Draft) {
+            Promotion::query()->whereKey($order->promotion_id)->where('used_count', '>', 0)->decrement('used_count');
         }
         // Une commande refusée/annulée après encaissement ouvre un remboursement explicite (BR-006).
         $refundable = $order->paid_xof - $order->refunded_xof - $this->refunds->pendingAmount($order);

@@ -82,7 +82,7 @@ export function InvoicesPage() {
           )}
         </Field>
         <Field label="Numéro ou commande">
-          {(p) => <Input {...p} value={q} onChange={update(setQ)} placeholder="FA-2026-… ou MKD-…" />}
+          {(p) => <Input {...p} value={q} maxLength={60} onChange={update(setQ)} placeholder="FA-2026-… ou MKD-…" />}
         </Field>
         <Field label="Du">{(p) => <Input {...p} type="date" value={from} onChange={update(setFrom)} />}</Field>
         <Field label="Au">{(p) => <Input {...p} type="date" value={to} onChange={update(setTo)} />}</Field>

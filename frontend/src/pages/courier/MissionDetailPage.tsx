@@ -147,7 +147,7 @@ export function MissionDetailPage() {
       </Card>
 
       {actions.length > 0 && (
-        <div className="fixed inset-x-0 bottom-0 z-20 border-t border-cocoa-100 bg-cream-50/95 p-4 backdrop-blur">
+        <div className="fixed inset-x-0 bottom-0 z-20 border-t border-cocoa-100 bg-cream-50/95 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur">
           <div className="mx-auto flex max-w-xl gap-2">
             {actions.includes('accept') && (
               <>

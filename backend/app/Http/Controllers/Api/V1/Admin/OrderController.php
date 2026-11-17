@@ -109,6 +109,14 @@ class OrderController extends Controller
 
     public function show(Request $request, Order $order): OrderResource
     {
+        // Atelier sans accès commercial (audit lot 3) : seulement les commandes en cours de production,
+        // avec les informations utiles à la préparation (ni historique, ni journal, ni missions).
+        if (! $request->user()->can('orders.view')) {
+            abort_unless(in_array($order->status->value, ['accepted', 'preparing', 'ready'], true), 404);
+            $order->load(['items', 'zone']);
+
+            return OrderResource::make($order)->additional(['meta' => ['available_actions' => $this->machine->availableActions($order, $request->user())]]);
+        }
         $order->load(['items', 'zone', 'events.actor', 'payments.events', 'refunds.requester', 'refunds.approver', 'assignments.partner', 'invoices']);
 
         return OrderResource::make($order)->additional(['meta' => ['available_actions' => $this->machine->availableActions($order, $request->user())]]);

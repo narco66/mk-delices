@@ -91,6 +91,57 @@ class SecurityTest extends TestCase
         $this->assertTrue(Hash::check(DemoDataSeeder::DEMO_PASSWORD, $commercial->password));
     }
 
+    /** Lot 3 : le préparateur ne voit que les commandes en production, sans données d'identification superflues. */
+    public function test_preparer_sees_only_orders_in_production_with_reduced_data(): void
+    {
+        [$order, $token] = $this->createOrder(null, null, ['customer' => ['last_name' => 'Diop']]);
+        $prep = $this->staff(User::ROLE_PREPARATEUR);
+        $this->actingAs($prep)->getJson("/api/v1/admin/orders/{$order->id}")->assertNotFound(); // pas encore acceptée
+
+        $this->payOrder($order, $token);
+        $this->transition($this->staff(User::ROLE_COMMERCIAL), $order, 'accept')->assertOk();
+        $this->actingAs($prep)->getJson("/api/v1/admin/orders/{$order->id}")->assertOk()
+            ->assertJsonPath('data.customer.first_name', 'Awa')->assertJsonPath('data.customer.last_name', null)
+            ->assertJsonMissingPath('data.customer_id')->assertJsonMissingPath('data.events')->assertJsonMissingPath('data.assignments');
+    }
+
+    /** Lot 3 : l'écran Utilisateurs ne gère que l'équipe ; les changements de mot de passe sont tracés. */
+    public function test_user_management_is_limited_to_staff_and_audits_password_changes(): void
+    {
+        $admin = $this->staff(User::ROLE_ADMIN);
+        $client = $this->staff(User::ROLE_CLIENT);
+        $this->actingAs($admin)->putJson("/api/v1/admin/users/{$client->id}", ['name' => 'X', 'email' => $client->email, 'roles' => ['admin'], 'password' => 'NouveauMotDePasse2026'])
+            ->assertStatus(422)->assertJsonPath('error.code', 'not_staff_account');
+        $this->assertFalse($client->fresh()->hasRole(User::ROLE_ADMIN));
+
+        $commercial = $this->staff(User::ROLE_COMMERCIAL);
+        $this->putJson("/api/v1/admin/users/{$commercial->id}", ['name' => 'Commercial', 'email' => $commercial->email, 'roles' => ['commercial'], 'password' => 'NouveauMotDePasse2026'])->assertOk();
+        $log = AuditLog::query()->where('action', 'user.updated')->latest('created_at')->firstOrFail();
+        $this->assertTrue($log->after_json['password_changed']);
+        $this->assertStringNotContainsString('NouveauMotDePasse2026', json_encode($log->after_json));
+    }
+
+    /** Lot 3 : compte client désactivé → plus d'accès par le compte (le lien de suivi personnel reste valable). */
+    public function test_disabled_client_loses_account_access_to_orders(): void
+    {
+        [$order] = $this->createOrder();
+        $user = $this->staff(User::ROLE_CLIENT);
+        $customer = $user->customer()->create(['first_name' => 'Awa', 'phone' => '+221771234567']);
+        $order->update(['customer_id' => $customer->id]);
+        $this->actingAs($user)->getJson("/api/v1/orders/{$order->reference}/status")->assertOk();
+        $user->update(['is_active' => false]);
+        $this->app['auth']->forgetGuards();
+        $this->actingAs($user->fresh())->getJson("/api/v1/orders/{$order->reference}/status")->assertNotFound();
+    }
+
+    public function test_malformed_inputs_return_4xx_and_api_is_not_cached(): void
+    {
+        $admin = $this->staff(User::ROLE_ADMIN);
+        $this->actingAs($admin)->getJson('/api/v1/admin/refunds?status[]=requested')->assertStatus(422);
+        $this->getJson('/api/v1/admin/invoices/pas-un-uuid/pdf')->assertNotFound();
+        $this->getJson('/api/v1/admin/refunds')->assertOk()->assertHeader('Cache-Control', 'no-store, private');
+    }
+
     public function test_disabled_user_loses_access_immediately(): void
     {
         $user = $this->staff(User::ROLE_COMMERCIAL);
@@ -129,9 +180,11 @@ class SecurityTest extends TestCase
 
     public function test_courier_and_preparer_see_masked_customer_contact_on_order(): void
     {
-        [$order] = $this->createOrder();
+        [$order, $token] = $this->createOrder();
+        $this->payOrder($order, $token);
+        $this->transition($this->staff(User::ROLE_COMMERCIAL), $order, 'accept')->assertOk();
         $this->actingAs($this->staff(User::ROLE_PREPARATEUR));
-        // Le préparateur accède au détail via la permission preparation.manage mais sans coordonnées complètes.
+        // Le préparateur accède au détail (commande en production) via preparation.manage, sans coordonnées complètes.
         $this->getJson("/api/v1/admin/orders/{$order->id}")->assertOk()
             ->assertJsonPath('data.customer.phone', '+22177 *** ** 67')->assertJsonPath('data.customer.email', null)
             ->assertJsonMissingPath('data.address.landmark');

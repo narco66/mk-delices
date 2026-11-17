@@ -237,7 +237,7 @@ export function HomePage() {
             {testimonials.items.map((t, i) => (
               <li key={i}>
                 <figure className="h-full rounded-[var(--radius-card)] bg-white p-6 shadow-soft">
-                  <p className="text-caramel-500" aria-label={`${t.stars} sur 5`}>{'★'.repeat(t.stars)}</p>
+                  <p className="text-caramel-500" role="img" aria-label={`${t.stars} étoiles sur 5`}>{'★'.repeat(t.stars)}</p>
                   <blockquote className="mt-3 font-display text-xl leading-snug">« {t.text} »</blockquote>
                   <figcaption className="mt-3 text-sm text-cocoa-500">— {t.author}</figcaption>
                 </figure>

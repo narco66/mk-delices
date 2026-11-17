@@ -10,7 +10,7 @@ import { Checkbox, Field, Input, Textarea } from '@/components/ui/Form'
 import { useAuth } from '@/features/auth/AuthContext'
 import { api, ApiError } from '@/lib/api'
 import { cn } from '@/lib/cn'
-import { allergenLabel, formatSlot, relativeMinutes } from '@/lib/format'
+import { allergenLabel, formatSlot, formatTime, relativeMinutes } from '@/lib/format'
 
 interface PrepItem {
   product_name: string
@@ -92,7 +92,7 @@ export function PreparationPage() {
       <PageHeader
         eyebrow="Atelier"
         title="Préparation"
-        description={`Ordonnée par créneau de livraison · actualisée automatiquement${dataUpdatedAt ? ` (${new Date(dataUpdatedAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })})` : ''}`}
+        description={`Ordonnée par créneau de livraison · actualisée automatiquement${dataUpdatedAt ? ` (${formatTime(new Date(dataUpdatedAt).toISOString())})` : ''}`}
         actions={
           <div className="flex items-end gap-2">
             <Field label="Jour de livraison">{(p) => <Input {...p} type="date" value={date} onChange={(e) => setDate(e.target.value)} />}</Field>
@@ -164,8 +164,8 @@ export function PreparationPage() {
                         </p>
                         {o.first_name && <p className="mt-1 text-xs text-cocoa-500">Pour : {o.first_name}</p>}
                         <ul className="mt-3 space-y-2 border-t border-cocoa-100/70 pt-3">
-                          {o.items.map((i) => (
-                            <li key={i.sku} className="text-sm">
+                          {o.items.map((i, idx) => (
+                            <li key={`${i.sku}-${idx}`} className="text-sm">
                               <p className="font-medium">
                                 {i.qty} × {i.product_name} <span className="text-cocoa-500">– {i.variant_label}</span>
                               </p>
@@ -187,7 +187,7 @@ export function PreparationPage() {
                         )}
                         {canAct && col.key === 'preparing' && o.undo_until && (
                           <Button className="mt-2 w-full" size="sm" variant="ghost" icon={<Undo2 className="size-4" />} onClick={() => setUndoFor(o)}>
-                            Annuler le démarrage (jusqu'à {new Date(o.undo_until).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })})
+                            Annuler le démarrage (jusqu'à {formatTime(o.undo_until)})
                           </Button>
                         )}
                       </Card>

@@ -92,5 +92,7 @@ test('Préparation démarrée par erreur : annulation depuis la fiche commande, 
   await dialog.getByRole('button', { name: 'Confirmer' }).click()
   await expect(dialog).toBeHidden()
   await expect(preparer.getByText('Commande : Acceptée')).toBeVisible()
-  await expect(preparer.getByText('Démarrée par erreur (test E2E)')).toBeVisible()
+  // Le motif est tracé dans l'historique, visible par le commercial (le préparateur n'a pas accès au journal).
+  await commercial.reload()
+  await expect(commercial.getByText('Démarrée par erreur (test E2E)')).toBeVisible()
 })

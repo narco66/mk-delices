@@ -7,6 +7,9 @@ Connexion : `https://<votre-site>/connexion`, puis menu **Livraisons**.
 - **Zones & tarifs** : liste des zones desservies avec frais client, minimum de commande et **rémunération du livreur** par course. (La modification des zones est réservée à l'administrateur.)
 - **Livreurs** : créez le compte de chaque livreur (nom, téléphone, email, mot de passe provisoire, moyen de transport) et cochez **les zones qu'il dessert**. Un livreur ne peut recevoir que des commandes de ses zones. Décochez « Actif » pour suspendre un livreur.
 
+- **Périmètre desservi** : la livraison est limitée à la **ville de Dakar** (sans Gorée). Une position hors du périmètre ne peut pas commander en ligne : le client est invité à écrire sur WhatsApp. Le contour est visible dans **Zones & tarifs › Périmètre desservi** ; seul l'administrateur peut le modifier (par exemple pour ajouter Pikine ou Guédiawaye).
+- **Zone d'une commande** : tant que les zones n'ont pas de contour dessiné, le client **choisit** sa zone ; s'il a indiqué sa position, la fiche commande affiche un lien **« Voir sur la carte »** pour vérifier que le quartier correspond. Si les contours des zones sont dessinés, la zone (et donc les frais) est déterminée automatiquement par la position.
+
 ## 2. Affecter une commande
 Dans **Livraisons**, la section « À affecter » liste les commandes **prêtes** (et celles en échec de livraison).
 1. Dans la liste déroulante de la commande, choisissez un livreur. Seuls les livreurs **actifs et éligibles à la zone** sont proposés, avec leur nombre de missions en cours ; ceux qui se sont déclarés **indisponibles** apparaissent grisés et ne peuvent pas être choisis.

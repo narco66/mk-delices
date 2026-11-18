@@ -1,9 +1,9 @@
 # Décision de mise en production (go / no-go) — MK Délices
 
 **Pour :** la direction de MK Délices et le responsable technique, à la réunion qui autorise l'ouverture du site au public.
-**Règle :** la mise en production est autorisée quand **toutes les lignes « Bloquant » sont cochées**. Les lignes « Recommandé » peuvent être traitées dans les 30 jours suivant l'ouverture.
+**Règle :** la mise en production est autorisée quand **toutes les lignes « Bloquant » sont cochées**. Sur le serveur, `php artisan mk:go-live-check` vérifie automatiquement, sans rien modifier, les points contrôlables par la machine : environnement, simulateur, paiement, emails, mentions légales, comptes et données de démonstration, administrateur, zones, carte… Il doit afficher « Aucun point bloquant ». Les lignes « Recommandé » peuvent être traitées dans les 30 jours suivant l'ouverture.
 
-État au 17/11/2026 : ✅ fait · ⏳ à faire par l'équipe technique · 🔴 attend MK Délices.
+État au 18/11/2026 : ✅ fait · ⏳ à faire par l'équipe technique · 🔴 attend MK Délices.
 
 ## 1. Métier et juridique
 
@@ -11,7 +11,7 @@
 |---|---|---|---|---|
 | M1 | Catalogue réel : produits, prix, ingrédients, **allergènes vérifiés sur les étiquettes**, conservation (D-CAT-01/02/03) | Bloquant | 🔴 | MK Délices |
 | M2 | Photos dont MK Délices détient les droits (D-BRAND-02) | Bloquant | 🔴 | MK Délices |
-| M3 | Zones, frais de livraison, minimums, rémunération des livreurs (D-ZONE, D-LIV-01) | Bloquant | 🔴 | MK Délices |
+| M3 | Zones, frais de livraison, minimums, rémunération des livreurs (D-ZONE, D-LIV-01). Périmètre desservi décidé le 18/11/2026 : **ville de Dakar** (contour en place) ; frais et minimums des 4 zones encore à confirmer | Bloquant | 🔴 frais à confirmer | MK Délices |
 | M4 | Horaires, jours fermés (fêtes), délais et capacité des créneaux (D-HOR) | Bloquant | 🔴 | MK Délices |
 | M5 | Raison sociale, NINEA, RCCM : **aucune facture en production sans eux** (D-JUR-01, D-JUR-04) | Bloquant | 🔴 | MK Délices |
 | M6 | Mentions légales, CGV, politique de confidentialité relues par un juriste ; déclaration CDP (D-JUR-01/02/03) | Bloquant | 🔴 | MK Délices + juriste |
@@ -45,6 +45,7 @@
 | T10 | Dépôt GitHub privé, serveur relié par clé de déploiement | Bloquant | 🔴 | Propriétaire du dépôt |
 | T11 | Comptes de démonstration supprimés ; administrateur créé par `mk:create-admin` ; données `is_demo` retirées | Bloquant | ⏳ le jour J | Technique |
 | T12 | Mesure de performance mobile réelle (PageSpeed ou téléphone) | Recommandé | ⏳ après T1 | Technique |
+| T14 | Carte et recherche d'adresse : domaine de production ajouté aux origines autorisées de la clé MapTiler ; de préférence une clé serveur distincte (voir `audit-geolocalisation/07-GUIDE-CONFIGURATION.md`) | Recommandé | ⏳ préproduction opérationnelle | MK Délices + technique |
 | T13 | Notifications des livreurs testées sur un vrai Android et un vrai iPhone | Recommandé | ⏳ préproduction | Technique + un livreur |
 
 ## 4. Équipe
@@ -58,7 +59,7 @@
 ## 5. Le jour de l'ouverture
 
 1. Sauvegarde manuelle, déploiement du commit validé, tests de fumée (`RUNBOOK-EXPLOITATION.md` § 2).
-2. Retrait des données de démonstration, création des vrais comptes, saisie des paramètres validés.
+2. Retrait des données de démonstration, création des vrais comptes, saisie des paramètres validés, puis **`php artisan mk:go-live-check`** : aucun point bloquant.
 3. Une commande réelle complète par l'équipe (paiement, préparation, livraison, facture), puis remboursement.
 4. Ouverture au public ; surveillance renforcée pendant 48 h (`/health`, paiements en attente, journaux).
 5. Revue à 30 jours : incidents, performances, retours clients.

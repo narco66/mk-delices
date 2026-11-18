@@ -15,6 +15,12 @@ Pour : la personne responsable de la plateforme (accès complet). Ce guide compl
 4. **Catalogue** : vos vrais produits (voir le guide commercial). Supprimez ou archivez les produits de démonstration s'il en reste.
 5. **Contenus du site** : remplacez les trames juridiques (CGV, confidentialité, mentions légales) par les textes validés par votre conseil.
 
+### Zones, carte et périmètre desservi
+- **Opérations › Zones › Périmètre desservi** : contour où MK Délices livre (aujourd'hui la ville de Dakar, sans Gorée). Pour l'élargir, dessinez un nouveau contour sur la carte ou importez un fichier GeoJSON ; la modification est tracée dans le journal d'audit.
+- **Contours des zones tarifaires** (facultatif) : une fois dessinés, ils déterminent automatiquement la zone et les frais à partir de la position du client. Dessinez-les **toutes** avant de compter sur ce contrôle.
+- **Carte et recherche d'adresse** : fournisseur MapTiler, clés configurées sur le serveur (voir `docs/audit-geolocalisation/07-GUIDE-CONFIGURATION.md`). Le jour de l'ouverture, ajoutez le **domaine de production** aux origines autorisées de la clé dans le compte MapTiler.
+- **Positions des clients** : effacées automatiquement 90 jours après la livraison ; l'adresse écrite reste sur la commande et la facture.
+
 ## 2. Utilisateurs et rôles
 **Utilisateurs** › **Nouvel utilisateur** : nom, email, mot de passe provisoire (12 caractères, majuscule, minuscule, chiffre), un ou plusieurs rôles :
 

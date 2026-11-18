@@ -9,6 +9,9 @@ Les cartes du haut indiquent ce qui demande une action : **À confirmer**, **Bro
 ## 2. Confirmer une commande
 1. **Commandes** › ouvrez la commande (statut « En attente de confirmation »).
 2. Vérifiez : articles, allergènes, créneau, adresse et repère, consignes du client.
+   - **Position** : si le client a indiqué sa position, la ligne « Position » propose **« Voir sur la carte »**, avec son origine (GPS, repère sur la carte, recherche, adresse enregistrée) et sa précision. Une précision de plusieurs centaines de mètres invite à confirmer le repère par téléphone.
+   - **« Zone choisie par le client, non vérifiée »** (encadré orange) : contrôlez que le quartier appartient bien à la zone choisie, car les frais en dépendent. Le filtre **« Zone vérifiée ? : Non »** de la liste des commandes les regroupe.
+   - **Adresse hors de Dakar** : le site refuse la commande en ligne et oriente le client vers WhatsApp. C'est à vous de décider d'une livraison sur devis.
 3. Regardez le badge de **paiement** :
    - « Payée » : le prestataire a confirmé, vous pouvez cliquer sur **Accepter** ;
    - « Paiement en vérification » ou « Non payée » pour un paiement en ligne : l'application **bloque** l'acceptation tant que le prestataire n'a pas confirmé. N'acceptez jamais sur la foi d'une capture d'écran envoyée par le client.

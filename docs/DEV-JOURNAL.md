@@ -81,5 +81,11 @@
 - **Défauts trouvés en préparant le renouvellement et corrigés :** les commandes de test (E2E, démonstration archivée) apparaissaient dans les écrans opérationnels et les avis publiés, et **occupaient la capacité des créneaux** (elles pouvaient bloquer un vrai client). Elles sont désormais exclues : portées `Order::notTest()` et `DeliveryAssignment::forRealOrders()`. Aucun effet en production, où aucune commande n'est de test.
 - **Base locale :** sauvegarde `pg_dump` préalable, 77 commandes archivées, 68 nouvelles. Tests backend 180/180.
 
+## 18/11/2026 — Phase 7 (suite) : recherche d'adresse, recette, formation, contrôle d'ouverture
+- **Recherche d'adresse MapTiler activée en préproduction** : la restriction d'origine de la clé a été levée par MK Délices. Lecture du quartier adaptée au format réel des réponses à Dakar (`454b4ee`) ; vérifiée dans le navigateur.
+- **Recette** : section « 5 bis. Géolocalisation et zones » (G-01 à G-12).
+- **Formation** : séances, exercice commun et guides (commercial, responsable des livraisons, livreur, administrateur) complétés pour la géolocalisation et le périmètre de Dakar.
+- **`mk:go-live-check`** : vérification en lecture seule des points go/no-go techniques, code 1 si un point bloque. Sur le poste local : 10 points bloquants attendus (démonstration, mentions légales, paiement réel…).
+
 ## Travaux restants (voir rapport final §15)
 Décisions métier/juridiques, contrats PSP, hébergement, sauvegardes, tests de charge, test avec lecteur d'écran, exécution réelle du déploiement et du test de restauration une fois l'hébergeur choisi.

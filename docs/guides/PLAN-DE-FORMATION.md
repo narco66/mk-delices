@@ -9,10 +9,10 @@
 | Séance | Public | Durée | Guide | Objectif : à la fin, la personne sait… |
 |---|---|---|---|---|
 | S1 | Tous | 30 min | — | Le circuit d'une commande : client → commercial → atelier → livreur → facture. Qui fait quoi, qui prévenir en cas de problème |
-| S2 | Commercial | 1 h 30 | `GUIDE-COMMERCIAL.md` | Confirmer ou refuser une commande, saisir une commande reçue par WhatsApp ou téléphone, modifier, annuler, suivre un paiement, demander un remboursement, **dicter le code de remise** au client d'une commande téléphone, vérifier une **remise sans code** |
+| S2 | Commercial | 1 h 30 | `GUIDE-COMMERCIAL.md` | Confirmer ou refuser une commande, saisir une commande reçue par WhatsApp ou téléphone, modifier, annuler, suivre un paiement, demander un remboursement, **dicter le code de remise** au client d'une commande téléphone, vérifier une **remise sans code**, contrôler une **zone non vérifiée** (filtre et alerte) à l'aide de la position du client |
 | S3 | Préparateurs | 45 min | `GUIDE-PREPARATEUR.md` | Lire la file de préparation, démarrer, signaler un problème, marquer prêt, vérifier la chaîne du froid |
-| S4 | Responsable des livraisons | 1 h 15 | `GUIDE-RESPONSABLE-LIVRAISONS.md` | Gérer livreurs et zones, affecter et réaffecter, réagir à une mission non acceptée ou à un **code bloqué**, décider après un échec, régler les livreurs et récupérer les espèces |
-| S5 | Livreurs | 45 min | `GUIDE-LIVREUR.md` | Se connecter, **activer les notifications**, accepter / refuser / rendre une mission, enlever, **demander le code de remise**, déclarer un échec (contact + 10 min d'attente) |
+| S4 | Responsable des livraisons | 1 h 15 | `GUIDE-RESPONSABLE-LIVRAISONS.md` | Gérer livreurs et zones (tarifs, **périmètre desservi**, contours sur la carte), affecter et réaffecter, réagir à une mission non acceptée ou à un **code bloqué**, décider après un échec, régler les livreurs et récupérer les espèces |
+| S5 | Livreurs | 45 min | `GUIDE-LIVREUR.md` | Se connecter, **activer les notifications**, accepter / refuser / rendre une mission, enlever, **ouvrir l'itinéraire** vers la position du client, **demander le code de remise**, déclarer un échec (contact + 10 min d'attente) |
 | S6 | Administrateur | 1 h | `GUIDE-ADMINISTRATEUR.md` | Créer et désactiver des comptes, attribuer les rôles, valider un remboursement (double contrôle), modifier les paramètres, lire le journal d'audit, réagir à un incident |
 
 Effectif conseillé : 6 personnes maximum par séance. S2 à S5 peuvent se faire le même jour, puis l'**exercice commun** (§ 2).
@@ -21,13 +21,14 @@ Effectif conseillé : 6 personnes maximum par séance. S2 à S5 peuvent se faire
 
 Chacun à son poste, sur la préproduction, l'animateur joue le client :
 
-1. Commande en ligne payée (simulateur), confirmée par le commercial.
+1. Commande en ligne payée (simulateur), avec la **position** choisie sur la carte ou par recherche d'adresse, confirmée par le commercial.
 2. Préparée et marquée prête par l'atelier.
 3. Affectée par le responsable ; le livreur reçoit la **notification** sur son téléphone, accepte, enlève.
 4. Livraison avec le **code** donné par le « client » ; vérifier la facture émise.
 5. Deuxième commande : **client absent** → échec déclaré par le livreur, décision du responsable, relivraison.
 6. Troisième commande reçue par **WhatsApp**, saisie par le commercial, payée à la livraison si ce mode est activé.
 7. Remboursement d'une commande annulée : demandé par le commercial, validé par l'administrateur.
+8. Adresse **hors de Dakar** (Pikine) : le client est orienté vers WhatsApp ; le commercial saisit la commande sur devis s'il l'accepte.
 
 ## 3. Avant les séances (technique)
 

@@ -2,9 +2,11 @@
 
 use App\Domain\Catalog\CatalogImporter;
 use App\Domain\Deliveries\DeliveryService;
+use App\Domain\Geo\Geocoder;
 use App\Domain\Geo\ZoneArea;
 use App\Domain\Geo\ZoneLocator;
 use App\Domain\Invoicing\InvoiceService;
+use App\Domain\Payments\GatewayRegistry;
 use App\Domain\Payments\PaymentService;
 use App\Domain\Payments\PaymentStatus;
 use App\Domain\Shared\AuditLogger;
@@ -13,9 +15,12 @@ use App\Domain\Shared\Settings;
 use App\Http\Controllers\HealthController;
 use App\Models\Cart;
 use App\Models\ContentPage;
+use App\Models\DeliveryPartner;
+use App\Models\DeliveryZone;
 use App\Models\IdempotencyKey;
 use App\Models\Order;
 use App\Models\Payment;
+use App\Models\Product;
 use App\Models\User;
 use Database\Seeders\DemoActivitySeeder;
 use Illuminate\Support\Facades\Cache;
@@ -151,6 +156,64 @@ Schedule::call(fn () => Cache::put(HealthController::SCHEDULER_HEARTBEAT, now()-
 Schedule::command('queue:monitor', ['database:default', '--max' => 50])->everyFiveMinutes();
 // Audit espace livreur E1 : mission proposée restée sans réponse -> alerte au responsable des livraisons.
 Schedule::command('mk:alert-unaccepted-missions')->everyTwoMinutes()->withoutOverlapping(5);
+
+/**
+ * Vérification « prêt pour la production » (docs/11-DEPLOYMENT/GO-NO-GO-PRODUCTION.md) : contrôle, SANS RIEN
+ * MODIFIER, les points go/no-go vérifiables par la machine. Code de sortie 1 s'il reste un point bloquant.
+ * Les points humains (contrats, juriste, formation, recette) restent à cocher dans la liste go/no-go.
+ */
+Artisan::command('mk:go-live-check', function (Settings $settings, GatewayRegistry $gateways) {
+    $demoUsers = User::query()->where('email', 'like', '%@mk-delices.test')->where('is_active', true)->count();
+    $admins = User::role(User::ROLE_ADMIN)->where('is_active', true)->where('email', 'not like', '%@mk-delices.test')->count();
+    $customerMethods = array_filter($gateways->availableMethods(), fn ($m) => ! $m['test_only']);
+    $missingLegal = array_filter(['business.legal_name', 'business.ninea', 'business.rccm'], fn ($k) => blank($settings->get($k)));
+    $pendingPages = ContentPage::query()->where('status', 'published')->where('requires_validation', true)->pluck('slug')->all();
+    $demoCatalogue = Product::query()->where('is_demo', true)->publiclyVisible()->count()
+        + DeliveryZone::query()->where('is_demo', true)->where('active', true)->count()
+        + DeliveryPartner::query()->where('is_demo', true)->where('active', true)->count();
+    $beat = Cache::get(HealthController::SCHEDULER_HEARTBEAT);
+
+    // [bloquant ?, point, conforme ?, action si non conforme]
+    $checks = [
+        [true, 'Environnement de production (APP_ENV)', app()->isProduction(), 'APP_ENV=production'],
+        [true, 'Mode débogage coupé (APP_DEBUG)', ! config('app.debug'), 'APP_DEBUG=false'],
+        [true, 'Adresse du site en HTTPS (APP_URL)', str_starts_with((string) config('app.url'), 'https://'), 'APP_URL=https://<domaine> (T1)'],
+        [true, 'Simulateur de paiement inactif', ! config('mkdelices.payments.simulator_enabled'), 'PAYMENTS_SIMULATOR_ENABLED=false (P4)'],
+        [true, 'Au moins un moyen de paiement réel ouvert aux clients', $customerMethods !== [], 'Configurer Wave (P1) ou activer le paiement à la livraison'],
+        [true, 'Emails réellement envoyés', ! in_array(config('mail.default'), ['log', 'array'], true), 'MAIL_MAILER=smtp + SPF/DKIM (T3)'],
+        [true, 'Raison sociale, NINEA, RCCM renseignés', $missingLegal === [], 'Paramètres manquants : '.implode(', ', $missingLegal).' (M5)'],
+        [true, 'Pages publiées validées (juriste)', $pendingPages === [], 'Encore « à valider » : '.implode(', ', $pendingPages).' (M6)'],
+        [true, 'Aucun compte de démonstration actif', $demoUsers === 0, "{$demoUsers} compte(s) @mk-delices.test actif(s) (T11)"],
+        [true, 'Aucune donnée de démonstration en vente', $demoCatalogue === 0, "{$demoCatalogue} produit(s), zone(s) ou livreur(s) de démonstration actifs (T11)"],
+        [true, 'Un administrateur réel actif', $admins > 0, 'php artisan mk:create-admin (T11)'],
+        [true, 'Au moins une zone de livraison active', DeliveryZone::query()->where('active', true)->exists(), 'Saisir les zones validées (M3)'],
+        [false, 'Périmètre desservi défini', app(ZoneLocator::class)->serviceArea() !== null, 'php artisan mk:set-service-area database/data/ville-de-dakar.geojson'],
+        [false, 'Fond de carte configuré', filled(config('mkdelices.maps.tiles_url')), 'MAPS_TILES_URL ; domaine de production autorisé dans MapTiler'],
+        [false, 'Recherche d\'adresse configurée', app(Geocoder::class)->enabled(), 'MAPS_GEOCODER=maptiler + MAPS_GEOCODER_KEY'],
+        [false, 'Purge des positions active', (int) config('mkdelices.maps.position_retention_days') > 0, 'MAPS_POSITION_RETENTION_DAYS=90'],
+        [false, 'Notifications des livreurs (clés VAPID)', filled(config('mkdelices.push.vapid_public_key')), 'php artisan mk:vapid-keys'],
+        [false, 'Numéro WhatsApp Business', filled($settings->get('business.whatsapp_number')), 'Paramètres › business.whatsapp_number (M9)'],
+        [false, 'Alertes d\'erreurs (Slack)', filled(config('logging.channels.slack.url')), 'LOG_SLACK_WEBHOOK_URL + LOG_STACK=daily,slack (T9)'],
+        [false, 'Planificateur actif (dernières 10 min)', $beat !== null && $beat > now()->subMinutes(10)->getTimestamp(), 'Tâche cron « schedule:run » (voir le runbook)'],
+    ];
+
+    $blocking = 0;
+    $rows = [];
+    foreach ($checks as [$isBlocking, $label, $ok, $action]) {
+        $blocking += ($isBlocking && ! $ok) ? 1 : 0;
+        $rows[] = [$ok ? 'OK' : ($isBlocking ? 'BLOQUANT' : 'à faire'), $label, $ok ? '' : $action];
+    }
+    $this->table(['État', 'Point de contrôle', 'Action'], $rows);
+    $this->line('Points humains (contrats, juriste, recette, formation, sauvegarde externe, test de restauration) : docs/11-DEPLOYMENT/GO-NO-GO-PRODUCTION.md');
+    if ($blocking > 0) {
+        $this->error("{$blocking} point(s) bloquant(s) : ouverture au public NON autorisée.");
+
+        return 1;
+    }
+    $this->info('Aucun point bloquant vérifiable par la machine. Compléter la décision go/no-go humaine.');
+
+    return 0;
+})->purpose('Vérifier, sans rien modifier, les points go/no-go techniques avant l\'ouverture');
 
 /**
  * Renouvelle le jeu de démonstration (local / préproduction) : la génération précédente est ARCHIVÉE (commandes

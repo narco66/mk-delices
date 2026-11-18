@@ -16,6 +16,8 @@ Connexion : ouvrez `https://<votre-site>/connexion` sur votre téléphone, entre
 1. **Mission proposée** : vous voyez le créneau, la zone, le quartier et les produits.
    - **Accepter**, ou **Refuser** en indiquant la raison (le responsable réaffectera).
 2. Après acceptation, vous voyez le **prénom**, l'**adresse**, le **repère**, les consignes, les boutons **Appeler** et **WhatsApp** et un lien **Itinéraire**.
+   - Si le client a indiqué sa **position**, **Itinéraire** ouvre Google Maps (ou l'application de navigation du téléphone) **directement sur son point de livraison**. Sinon, le lien cherche l'adresse écrite : en cas de doute, appelez le client.
+   - L'application ne suit **jamais** votre propre position.
    - **Imprévu avant l'enlèvement** (panne, accident, urgence) : bouton **Rendre**, avec le motif. La commande est confiée à un autre livreur ; le responsable est prévenu automatiquement. Une fois la commande enlevée, il faut aller au bout (livraison ou **Échec**).
 3. **À l'atelier** : vérifiez les colis, le conditionnement et, pour les produits frais, que le froid est maintenu. Cliquez sur **Confirmer l'enlèvement** et cochez la vérification.
 4. **Chez le client** : demandez au client son **code de remise** (4 chiffres, reçu avec sa commande), cliquez sur **Livrée** et saisissez-le. Après **5 codes faux**, la saisie est bloquée et le responsable est prévenu. Si le client n'a pas son code, choisissez **Remise sans code** et notez le nom de la personne qui reçoit : la livraison est acceptée, mais le commercial la vérifiera auprès du client. Si un montant est à encaisser, indiquez **exactement** la somme reçue : elle est enregistrée comme paiement du client, et tout écart est signalé.

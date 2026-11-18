@@ -81,6 +81,25 @@ Testez sur les appareils réellement utilisés : **téléphone** pour la boutiqu
 | L-08 | Confidentialité | `livreur2@` tente d'ouvrir une mission de `livreur1@` | Accès refusé | | |
 | L-09 | Règlements | Livraisons → Règlements → régler un livreur | Montant dû et espèces détenues remis à zéro pour les missions réglées | | |
 
+## 5 bis. Géolocalisation et zones (téléphone, puis ordinateur)
+
+Sur la page « Commander ». Pour simuler une position ailleurs qu'à l'endroit où l'on se trouve, utiliser « Choisir sur la carte » ou la recherche.
+
+| N° | Scénario | Étapes | Résultat attendu | OK / KO | Remarque |
+|---|---|---|---|---|---|
+| G-01 | Position acceptée | « Utiliser ma position actuelle » → autoriser → « Confirmer cette position » | Le téléphone demande l'autorisation **seulement** au clic ; « Position de livraison confirmée » | | |
+| G-02 | Position refusée | Même bouton → refuser l'autorisation | Message clair ; la commande reste possible avec zone, quartier et repère | | |
+| G-03 | Carte | « Choisir sur la carte » → toucher la carte, faire glisser le repère | Carte lisible sur téléphone, repère déplaçable, mention © MapTiler / OpenStreetMap | | |
+| G-04 | Recherche d'adresse | Taper « Sacré Coeur 3 » → choisir un résultat → confirmer | Quartier (et rue si connue) remplis automatiquement, toujours modifiables | | |
+| G-05 | Hors de Dakar | Placer le repère à Pikine ou Rufisque | « En dehors de notre périmètre de livraison », lien WhatsApp ; impossible de confirmer cette position | | |
+| G-06 | Frais affichés = frais payés | Changer de zone juste avant de confirmer | Le bouton affiche « … » pendant le recalcul ; le total payé est celui affiché | | |
+| G-07 | Adresses du compte | `client1@` → Mon compte → Adresses : ajouter une adresse avec position, la modifier, « Définir par défaut » | Une seule adresse par défaut ; elle est proposée automatiquement au moment de commander | | |
+| G-08 | Fiche commande (commercial) | Ouvrir une commande passée avec une position | Ligne « Position » : lien « Voir sur la carte », origine (GPS, carte…), précision | | |
+| G-09 | Zone non vérifiée | Commandes → filtre « Zone vérifiée ? : Non, choisie par le client » | Liste des commandes dont la zone doit être contrôlée avant acceptation ; alerte orange sur la fiche | | |
+| G-10 | Itinéraire du livreur | `livreur1@` → mission acceptée d'une commande avec position → « Itinéraire » | Google Maps (ou l'application du téléphone) s'ouvre sur le point exact | | |
+| G-11 | Périmètre desservi | `admin@` → Opérations → Zones → « Périmètre desservi » | Contour de la ville de Dakar affiché sur la carte ; modification réservée à l'administrateur | | |
+| G-12 | Statistiques par zone | Statistiques → tableau « Par zone de livraison » | Commandes, chiffre d'affaires, livraisons et part « avec position » par zone ; aucune position individuelle | | |
+
 ## 6. Administration et finances (`admin@`)
 
 | N° | Test | Étapes | Résultat attendu | OK / KO | Remarques |
@@ -97,6 +116,7 @@ Testez sur les appareils réellement utilisés : **téléphone** pour la boutiqu
 - **Emails et SMS** aux clients : volontairement non envoyés en préproduction.
 - **Textes juridiques définitifs** : en attente de la relecture par un juriste.
 - **Photos définitives et logo** : en attente de la séance photo.
+- **GPS en conditions réelles** : la précision en intérieur et sur les téléphones d'entrée de gamme se vérifie sur le terrain, à Dakar (G-01 avec deux ou trois téléphones différents).
 
 Ces points seront vérifiés lors d'une **courte recette complémentaire** juste avant l'ouverture.
 

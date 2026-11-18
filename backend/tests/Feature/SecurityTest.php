@@ -17,6 +17,8 @@ class SecurityTest extends TestCase
     {
         foreach (['/api/v1/admin/orders', '/api/v1/courier/missions', '/api/v1/account/orders', '/api/v1/auth/me'] as $uri) {
             $this->getJson($uri)->assertUnauthorized()->assertJsonPath('error.code', 'unauthenticated');
+            // Audit sécurité du 18/11/2026 : sans « Accept: application/json », 401 et non une erreur 500.
+            $this->get($uri)->assertUnauthorized()->assertJsonPath('error.code', 'unauthenticated');
         }
     }
 

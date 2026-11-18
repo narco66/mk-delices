@@ -38,6 +38,9 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->statefulApi();
+        // Audit sécurité du 18/11/2026 : pas de redirection vers une route « login » inexistante (erreur 500)
+        // quand un client de l'API n'envoie pas « Accept: application/json » ; l'API répond 401.
+        $middleware->redirectGuestsTo(fn (Request $request) => $request->is('api/*') ? null : '/connexion');
         $middleware->api(append: [UseSanctumGuard::class]);
         $middleware->prepend(AssignRequestId::class);
         $middleware->append(SecurityHeaders::class);

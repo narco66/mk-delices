@@ -34,6 +34,12 @@ Tous les résultats ci-dessous ont été **réellement exécutés**.
 
 Le serveur avait, lui, correctement refusé de facturer un montant non vu par le client.
 
+**Après le renouvellement du jeu de démonstration (18/11/2026, commit `104dda2`)** :
+- backend 180/180 ;
+- E2E complète **57/57** (17,2 min) sur la base locale renouvelée.
+
+Une première campagne avait été interrompue par la fin de la session de travail : 5 processus arrêtés brutalement, sans échec d'assertion. Elle a été entièrement rejouée.
+
 ## 2 bis. Échecs intermittents du 18/11/2026 (après le périmètre desservi)
 
 Au premier passage de la suite complète, deux tests ont échoué. Ils sont passés isolément (mobile et bureau), puis au second passage complet.

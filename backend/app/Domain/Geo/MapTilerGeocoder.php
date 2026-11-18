@@ -10,14 +10,18 @@ use Illuminate\Support\Facades\Log;
 /**
  * Géocodage MapTiler (données OpenStreetMap), appelé uniquement par le serveur : la clé reste secrète.
  * Réponse attendue : GeoJSON FeatureCollection (place_name, text, center [lng, lat], context[]).
- * Format à revérifier sur un compte réel avant la mise en production (docs/audit-geolocalisation/07-GUIDE-CONFIGURATION.md).
+ * Format vérifié sur le compte réel de MK Délices le 18/11/2026 (context : place, municipality… ; voir
+ * docs/audit-geolocalisation/07-GUIDE-CONFIGURATION.md).
  */
 class MapTilerGeocoder implements Geocoder
 {
     private const BASE = 'https://api.maptiler.com/geocoding/';
 
     /** Niveaux du contexte assimilés à un « quartier » à Dakar (du plus fin au plus large). */
-    private const DISTRICT_LEVELS = ['neighbourhood', 'neighborhood', 'subcity', 'municipal_district', 'locality', 'municipality'];
+    private const DISTRICT_LEVELS = ['neighbourhood', 'neighborhood', 'place', 'subcity', 'municipal_district', 'locality', 'municipality'];
+
+    /** Noms de voie que MapTiler range parfois au niveau « place » à Dakar (ex. « Rue PA-18-33 454 ») : jamais un quartier. */
+    private const STREET_PREFIX = '/^(rue|avenue|av\.|route|boulevard|bd|voie|allée|impasse|autoroute)\b/iu';
 
     public function enabled(): bool
     {
@@ -75,6 +79,17 @@ class MapTilerGeocoder implements Geocoder
         return $ttl > 0 ? Cache::remember('geo:maptiler:'.sha1($path.json_encode($params)), $ttl, $fetch) : $fetch();
     }
 
+    /**
+     * Nom de quartier lisible : « Commune de Dakar-Plateau » → « Dakar-Plateau » ; « parcelles assainies »
+     * (saisie OSM en minuscules) → « Parcelles Assainies ». Format constaté sur l'API le 18/11/2026.
+     */
+    private static function districtName(string $text): string
+    {
+        $name = trim((string) preg_replace("/^commune\\s+(de\\s+|d['’]\\s*)/iu", '', $text));
+
+        return $name === mb_strtolower($name) ? mb_convert_case($name, MB_CASE_TITLE) : $name;
+    }
+
     private function toPlace(array $feature): ?GeocodedPlace
     {
         $label = (string) ($feature['place_name'] ?? $feature['text'] ?? '');
@@ -90,8 +105,9 @@ class MapTilerGeocoder implements Geocoder
         foreach (self::DISTRICT_LEVELS as $level) {
             foreach ($levels as $item) {
                 $types = array_merge((array) ($item['place_type'] ?? []), [strtok((string) ($item['id'] ?? ''), '.')]);
-                if (in_array($level, $types, true) && filled($item['text'] ?? null)) {
-                    $district = (string) $item['text'];
+                $text = trim((string) ($item['text'] ?? ''));
+                if (in_array($level, $types, true) && $text !== '' && ! preg_match(self::STREET_PREFIX, $text)) {
+                    $district = self::districtName($text);
                     break 2;
                 }
             }

@@ -192,6 +192,27 @@ class GeolocationTest extends TestCase
             ->assertJsonPath('data.geocoding', 'unavailable')->assertJsonPath('data.suggestion', null);
     }
 
+    public function test_district_is_read_from_real_maptiler_format_in_dakar(): void
+    {
+        config(['mkdelices.maps.geocoder' => 'maptiler', 'mkdelices.maps.geocoder_key' => 'test-key']);
+        // Réponses relevées sur l'API MapTiler le 18/11/2026 (contexte « place » / « municipality »).
+        $address = fn (string $street, array $context) => ['type' => 'FeatureCollection', 'features' => [[
+            'place_name' => "{$street}, Dakar, Sénégal", 'text' => $street, 'place_type' => ['address'], 'center' => [self::LNG, self::LAT], 'context' => $context,
+        ]]];
+        Http::fake(['api.maptiler.com/*' => Http::sequence()
+            // Une voie rangée au niveau « place » n'est jamais un quartier ; commune saisie en minuscules.
+            ->push($address('Voie de Dégagement Nord', [['id' => 'place.1', 'text' => 'Rue PA-18-33 454'], ['id' => 'municipality.2', 'text' => 'parcelles assainies']]))
+            ->push($address('Rue Lamine Barry', [['id' => 'place.3', 'text' => 'Medina'], ['id' => 'municipality.4', 'text' => 'Commune de Médina']]))
+            ->push($address('Avenue Pompidou', [['id' => 'municipality.5', 'text' => 'Commune de Dakar-Plateau']]))
+            ->push(['features' => [['place_name' => 'Sacré Coeur 3, Dakar', 'text' => 'Sacré Coeur 3', 'place_type' => ['place'], 'center' => [-17.47, 14.72],
+                'context' => [['id' => 'municipality.6', 'text' => 'Commune de Sicap-Liberté']]]]])]);
+
+        foreach (['Parcelles Assainies', 'Medina', 'Dakar-Plateau'] as $expected) {
+            $this->postJson('/api/v1/geo/resolve', ['lat' => self::LAT, 'lng' => self::LNG])->assertOk()->assertJsonPath('data.suggestion.district', $expected);
+        }
+        $this->getJson('/api/v1/geo/search?q=Sacre+Coeur+3')->assertOk()->assertJsonPath('data.0.district', 'Sacré Coeur 3');
+    }
+
     public function test_search_is_limited_to_service_region(): void
     {
         $this->getJson('/api/v1/geo/search?q=Sacre+Coeur')->assertOk()->assertJsonPath('meta.geocoding', 'disabled');

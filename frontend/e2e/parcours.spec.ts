@@ -53,12 +53,15 @@ test('Scénario C : panier envoyé sur WhatsApp = brouillon, sans paiement', asy
   await page.goto('/commander')
   const popupPromise = context.waitForEvent('page')
   await page.getByRole('button', { name: 'Envoyer mon panier sur WhatsApp' }).click()
+  // Le message « Brouillon … préparé » ne dure que 8 s : guetté en parallèle de la redirection WhatsApp,
+  // qui peut être lente quand toute la campagne tourne (échec intermittent constaté le 18/11/2026).
+  const draftNotice = expect(page.getByText(/Brouillon MKD-/)).toBeVisible({ timeout: 20_000 })
   const popup = await popupPromise
   // wa.me redirige vers api.whatsapp.com : on vérifie le numéro et le message encodé.
   await expect.poll(() => popup.url(), { timeout: 15_000 }).toMatch(/(wa\.me\/|phone=)221700000000/)
   expect(decodeURIComponent(popup.url().replace(/\+/g, ' '))).toContain('Référence : MKD-')
   await popup.close()
-  await expect(page.getByText(/Brouillon MKD-/)).toBeVisible()
+  await draftNotice
 })
 
 test('Scénario G (UI) : un livreur ne peut pas ouvrir le back-office', async ({ page }) => {

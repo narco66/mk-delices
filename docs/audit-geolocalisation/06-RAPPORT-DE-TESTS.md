@@ -21,7 +21,7 @@ Tous les résultats ci-dessous ont été **réellement exécutés**.
 | Frontend Vitest | `npm test` | 19/19 | **20/20** (hors zone étendu, hors périmètre ajouté) |
 | ESLint, TypeScript, build Vite | `npm run lint`, `tsc -b`, `npm run build` | OK | **OK** |
 | E2E géolocalisation | `playwright test e2e/geolocalisation.spec.ts` | n'existait pas | **7/7**, quatre exécutions (dont une après le périmètre desservi) |
-| E2E suite complète | `playwright test` | 49 (campagne précédente) | **57/57** (11,2 min), avant l'ajout du périmètre (non rejouée ensuite) |
+| E2E suite complète | `playwright test` | 49 (campagne précédente) | **57/57** (11,2 min) avant le périmètre ; après le périmètre : 1er passage 55/57 (2 échecs intermittents, § 2 bis), 2e passage **57/57** (11,1 min) |
 
 ## 2. Défaut découvert par les tests
 
@@ -33,6 +33,15 @@ Tous les résultats ci-dessous ont été **réellement exécutés**.
 **Correction (A-02).** Le bouton est désactivé et le total masqué pendant le recalcul. Ensuite : 7/7 sur trois exécutions, puis suite complète verte.
 
 Le serveur avait, lui, correctement refusé de facturer un montant non vu par le client.
+
+## 2 bis. Échecs intermittents du 18/11/2026 (après le périmètre desservi)
+
+Au premier passage de la suite complète, deux tests ont échoué. Ils sont passés isolément (mobile et bureau), puis au second passage complet.
+
+| Test | Cause | Traitement |
+|---|---|---|
+| Scénario C (WhatsApp, mobile) | Le message « Brouillon … préparé » ne dure que 8 s. Sous la charge de la campagne, la vérification de la redirection WhatsApp prenait plus longtemps, et le test cherchait le message après sa disparition. **Fragilité du test**, sans lien avec la géolocalisation | Message guetté en parallèle (`e2e/parcours.spec.ts`). Rejoué 2 × 2 fois : vert |
+| Clavier seul : compléter la commande (bureau) | Non établie : le détail de l'erreur a été écrasé par le passage isolé suivant. Hypothèse : le bouton « Confirmer », désactivé pendant le recalcul du devis (A-02), est momentanément hors de l'ordre de tabulation sur un serveur de développement chargé | **Sous surveillance.** Vert 3 fois depuis. À reproduire avant de changer A-02 (piste : `aria-disabled` plutôt que `disabled`) |
 
 ## 3. Matrice des scénarios
 

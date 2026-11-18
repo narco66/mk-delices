@@ -42,7 +42,7 @@ Priorités :
 | Dans MapTiler (Account > Keys) : ajouter `srv2163043.hstgr.cloud` (et plus tard le domaine de production) aux origines autorisées de la clé existante ; créer une **seconde clé, sans restriction d'origine**, pour le serveur (géocodage) | P1 | MK Délices | Compte ouvert | 10 min |
 | Vérifier le format réel des réponses de géocodage sur le compte (quartiers de Dakar) et ajuster `MapTilerGeocoder::DISTRICT_LEVELS` | P1 | Équipe technique | Compte | 2 h |
 | Dessiner, si souhaité, les contours des **4 zones tarifaires** à l'intérieur de Dakar (sinon le client choisit sa zone, contrôlée par le commercial) | P2 | MK Délices (livraisons) | Fond de carte | 1 à 2 h |
-| Mentionner la position dans la politique de confidentialité (finalité, durée, destinataires : livreur et fournisseur de tuiles) | P2 | Conseil juridique | — | — |
+| Valider puis publier la mention « géolocalisation » de la politique de confidentialité : projet prêt en [annexe A2](annexes/A2-PROJET-MENTION-CONFIDENTIALITE.md) | P2 | Conseil juridique | — | — |
 | Tester le GPS sur de vrais téléphones à Dakar (Android d'entrée de gamme, iPhone, en intérieur) | P2 | Équipe et MK Délices | Préproduction | 1/2 journée |
 | Seuil de livraison gratuite (promotion de type « livraison offerte ») | P3 | Équipe technique | Décision commerciale | 1 jour |
 | Tarif kilométrique ou distance maximale | P3 | Équipe technique | Décision commerciale, adresse de l'atelier, service de routage | 3 à 5 jours |

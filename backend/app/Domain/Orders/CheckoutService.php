@@ -4,6 +4,8 @@ namespace App\Domain\Orders;
 
 use App\Domain\Cart\Quote;
 use App\Domain\Cart\QuoteService;
+use App\Domain\Geo\GeoPoint;
+use App\Domain\Geo\ZoneLocator;
 use App\Domain\Payments\GatewayRegistry;
 use App\Domain\Payments\PaymentService;
 use App\Domain\Promotions\PromotionService;
@@ -38,6 +40,7 @@ class CheckoutService
         private readonly GatewayRegistry $gateways,
         private readonly AuditLogger $audit,
         private readonly Settings $settings,
+        private readonly ZoneLocator $zones,
     ) {}
 
     /**
@@ -60,8 +63,26 @@ class CheckoutService
             }
 
             $fulfillment = $data['fulfillment_type'] ?? 'delivery';
-            $quote = $this->quotes->quote($cart, $data['delivery']['zone_id'] ?? null, $fulfillment, $data['promotion_code'] ?? null, lock: true);
+            $zoneId = $data['delivery']['zone_id'] ?? null;
+            $zoneSource = ZoneLocator::SOURCE_DECLARED;
+            $point = null;
+            if ($fulfillment === 'delivery') {
+                // DEC-GEO-02 : avec une position, la zone (donc les frais) est déterminée par le serveur, jamais
+                // par le choix du client ; hors des zones dessinées, la commande en ligne est refusée.
+                $point = GeoPoint::maybe($data['delivery']['lat'] ?? null, $data['delivery']['lng'] ?? null);
+                $located = $this->zones->locateOrFail($point, $zoneId);
+                $zoneId = $located['zone']?->id ?? $zoneId;
+                $zoneSource = $located['source'];
+            }
+            $quote = $this->quotes->quote($cart, $zoneId, $fulfillment, $data['promotion_code'] ?? null, lock: true);
             $quote->assertValid();
+            // Montant attendu (docs/audit-geolocalisation) : le client valide le montant qu'il a vu ; s'il a changé entre-temps
+            // (frais de zone modifiés, zone recalculée), il est prévenu au lieu d'être engagé sur un autre total.
+            if (isset($data['expected_total_xof']) && (int) $data['expected_total_xof'] !== $quote->total()) {
+                throw DomainException::conflict('total_changed', 'Le montant de votre commande a changé. Vérifiez le nouveau total avant de valider.', [
+                    'total_xof' => $quote->total(), 'delivery_fee_xof' => $quote->deliveryFee, 'zone' => $quote->zone ? ['id' => $quote->zone->id, 'name' => $quote->zone->name] : null,
+                ]);
+            }
 
             $method = $data['payment_method'] ?? null;
             $available = array_column($this->gateways->availableMethods(), 'code');
@@ -86,7 +107,7 @@ class CheckoutService
                 'fulfillment_type' => $fulfillment,
                 'zone_id' => $quote->zone?->id,
                 'customer_snapshot' => $this->customerSnapshot($data['customer']),
-                'address_snapshot' => $fulfillment === 'delivery' ? $this->addressSnapshot($data['delivery'], $quote) : null,
+                'address_snapshot' => $fulfillment === 'delivery' ? $this->addressSnapshot($data['delivery'], $quote, $point, $zoneSource) : null,
                 'slot_start_at' => $slot['start'],
                 'slot_end_at' => $slot['end'],
                 'customer_notes' => $data['notes'] ?? null,
@@ -232,13 +253,23 @@ class CheckoutService
                     throw DomainException::conflict('online_payment_in_progress', 'Un paiement en ligne est en cours : les frais ne peuvent pas changer tant qu\'il n\'est pas terminé.');
                 }
                 $locked->zone_id = $zone->id;
+                $previous = $locked->address_snapshot ?? [];
+                // Position du client conservée si le commercial ne la transmet pas (sinon elle serait effacée).
+                $point = array_key_exists('lat', $data['delivery'])
+                    ? GeoPoint::maybe($data['delivery']['lat'], $data['delivery']['lng'] ?? null)
+                    : GeoPoint::maybe($previous['lat'] ?? null, $previous['lng'] ?? null);
+                $samePoint = $point && $point->lat === ($previous['lat'] ?? null) && $point->lng === ($previous['lng'] ?? null);
                 $locked->address_snapshot = [
                     'zone_name' => $zone->name,
                     'district' => $data['delivery']['district'],
                     'street' => $data['delivery']['street'] ?? null,
                     'landmark' => $data['delivery']['landmark'] ?? null,
-                    'lat' => $data['delivery']['lat'] ?? null,
-                    'lng' => $data['delivery']['lng'] ?? null,
+                    'lat' => $point?->lat,
+                    'lng' => $point?->lng,
+                    'location_source' => $point ? ($samePoint ? ($previous['location_source'] ?? null) : 'staff') : null,
+                    'accuracy_m' => $samePoint ? ($previous['accuracy_m'] ?? null) : null,
+                    // Zone choisie par l'équipe : décision humaine, tracée dans l'audit de la commande.
+                    'zone_source' => 'staff',
                 ];
                 $locked->delivery_fee_xof = $newFee;
                 $locked->total_xof = $locked->subtotal_xof - $locked->discount_xof + $newFee;
@@ -396,15 +427,20 @@ class CheckoutService
         ], fn ($v) => $v !== null && $v !== '');
     }
 
-    private function addressSnapshot(array $delivery, Quote $quote): array
+    private function addressSnapshot(array $delivery, Quote $quote, ?GeoPoint $point, string $zoneSource): array
     {
         return [
             'zone_name' => $quote->zone?->name,
             'district' => $delivery['district'],
             'street' => $delivery['street'] ?? null,
             'landmark' => $delivery['landmark'] ?? null,
-            'lat' => $delivery['lat'] ?? null,
-            'lng' => $delivery['lng'] ?? null,
+            'lat' => $point?->lat,
+            'lng' => $point?->lng,
+            // Origine de la position (gps, carte, recherche, adresse enregistrée) et précision annoncée.
+            'location_source' => $point ? ($delivery['location_source'] ?? null) : null,
+            'accuracy_m' => $point && isset($delivery['accuracy_m']) ? (int) $delivery['accuracy_m'] : null,
+            // « position » : zone calculée par le serveur ; « declared » : choisie par le client, à vérifier.
+            'zone_source' => $zoneSource,
         ];
     }
 }

@@ -9,7 +9,7 @@ import { Field, Input, Select } from '@/components/ui/Form'
 import { useAuth } from '@/features/auth/AuthContext'
 import { api, toQuery } from '@/lib/api'
 import { CHANNEL_LABELS, formatDateTime, formatSlot, formatXof } from '@/lib/format'
-import type { AdminOrder } from '@/types/api'
+import type { AdminOrder, Zone } from '@/types/api'
 import { Pagination, type PaginatedResponse } from './shared'
 import { chip, ORDER_STATUS_LABELS, PAYMENT_STATUS_LABELS } from './labels'
 
@@ -43,9 +43,19 @@ export function OrdersPage() {
     from: params.get('from'),
     to: params.get('to'),
     slot_date: params.get('slot_date'),
+    zone_id: params.get('zone_id'),
+    zone_source: params.get('zone_source'),
     sort: params.get('sort'),
     page,
   }
+
+  // Zones (y compris inactives) pour filtrer les commandes par secteur de livraison.
+  const zones = useQuery({
+    queryKey: ['admin', 'zones'],
+    enabled: can('zones.view'),
+    queryFn: async () => (await api.get<{ data: Zone[] }>('/admin/delivery/zones')).data,
+    staleTime: 5 * 60_000,
+  })
 
   const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ['admin', 'orders', query],
@@ -94,7 +104,7 @@ export function OrdersPage() {
           ))}
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Field label="Paiement">
             {(p) => (
               <Select {...p} value={params.get('payment_status') ?? ''} onChange={(e) => setParam('payment_status', e.target.value || null)}>
@@ -116,6 +126,30 @@ export function OrdersPage() {
                     {v}
                   </option>
                 ))}
+              </Select>
+            )}
+          </Field>
+          <Field label="Zone">
+            {(p) => (
+              <Select {...p} value={params.get('zone_id') ?? ''} onChange={(e) => setParam('zone_id', e.target.value || null)}>
+                <option value="">Toutes</option>
+                {zones.data?.map((z) => (
+                  <option key={z.id} value={z.id}>
+                    {z.name}
+                    {z.active === false ? ' (inactive)' : ''}
+                  </option>
+                ))}
+                <option value="none">Sans zone (retrait)</option>
+              </Select>
+            )}
+          </Field>
+          <Field label="Zone vérifiée ?">
+            {(p) => (
+              <Select {...p} value={params.get('zone_source') ?? ''} onChange={(e) => setParam('zone_source', e.target.value || null)}>
+                <option value="">Toutes</option>
+                <option value="position">Oui, par la position</option>
+                <option value="declared">Non, choisie par le client</option>
+                <option value="staff">Modifiée par l'équipe</option>
               </Select>
             )}
           </Field>

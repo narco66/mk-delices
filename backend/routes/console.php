@@ -2,11 +2,14 @@
 
 use App\Domain\Catalog\CatalogImporter;
 use App\Domain\Deliveries\DeliveryService;
+use App\Domain\Geo\ZoneArea;
+use App\Domain\Geo\ZoneLocator;
 use App\Domain\Invoicing\InvoiceService;
 use App\Domain\Payments\PaymentService;
 use App\Domain\Payments\PaymentStatus;
 use App\Domain\Shared\AuditLogger;
 use App\Domain\Shared\DomainException;
+use App\Domain\Shared\Settings;
 use App\Http\Controllers\HealthController;
 use App\Models\Cart;
 use App\Models\ContentPage;
@@ -15,6 +18,7 @@ use App\Models\Order;
 use App\Models\Payment;
 use App\Models\User;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schedule;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rules\Password;
@@ -72,10 +76,74 @@ Artisan::command('mk:purge-expired', function () {
     $this->info("Paniers supprimés : {$carts} ; clés d'idempotence : {$keys}.");
 })->purpose('Purger paniers expirés et clés d\'idempotence');
 
+/** Minimisation des données : efface la position GPS des commandes terminées au-delà de la durée de conservation. */
+Artisan::command('mk:purge-delivery-positions {--dry-run : compter sans rien effacer}', function () {
+    $days = (int) config('mkdelices.maps.position_retention_days');
+    if ($days <= 0) {
+        $this->info('Purge des positions désactivée (MAPS_POSITION_RETENTION_DAYS=0).');
+
+        return 0;
+    }
+    $query = Order::query()->whereIn('status', ['delivered', 'cancelled', 'rejected'])
+        ->whereRaw("address_snapshot->>'lat' IS NOT NULL")
+        ->where(fn ($q) => $q->where('slot_end_at', '<', now()->subDays($days))
+            ->orWhere(fn ($n) => $n->whereNull('slot_end_at')->where('updated_at', '<', now()->subDays($days))));
+    $count = (clone $query)->count();
+    if ($this->option('dry-run')) {
+        $this->info("{$count} commande(s) dont la position serait effacée (conservation : {$days} j).");
+
+        return 0;
+    }
+    // Requête SQL directe : n'altère ni updated_at ni l'historique ; « position_purged_at » garde la trace (et les statistiques).
+    $done = $query->update(['address_snapshot' => DB::raw("(address_snapshot - 'lat' - 'lng' - 'accuracy_m') || jsonb_build_object('position_purged_at', to_jsonb(now()))")]);
+    if ($done > 0) {
+        app(AuditLogger::class)->log('geo.positions_purged', null, null, ['count' => $done, 'retention_days' => $days]);
+    }
+    $this->info("Positions effacées : {$done} commande(s).");
+
+    return 0;
+})->purpose('Effacer les positions GPS des commandes terminées au-delà de la durée de conservation');
+
+/** Charge le périmètre desservi depuis un fichier GeoJSON (Polygon, MultiPolygon, Feature ou FeatureCollection). */
+Artisan::command('mk:set-service-area {file? : chemin du fichier GeoJSON} {--clear : supprimer le périmètre}', function (Settings $settings) {
+    $before = app(ZoneLocator::class)->serviceArea();
+    if ($this->option('clear')) {
+        $settings->set(ZoneLocator::SERVICE_AREA_SETTING, null);
+        app(AuditLogger::class)->log('delivery.service_area_updated', null, ['area' => $before ? 'défini' : null], ['area' => null]);
+        $this->info('Périmètre desservi supprimé : retour au choix de zone par le client.');
+
+        return 0;
+    }
+    $file = (string) $this->argument('file');
+    if ($file === '' || ! is_file($file)) {
+        $this->error("Fichier introuvable : {$file}");
+
+        return 1;
+    }
+    $json = json_decode((string) file_get_contents($file), true);
+    $geometry = match ($json['type'] ?? null) {
+        'Feature' => $json['geometry'] ?? null,
+        'FeatureCollection' => $json['features'][0]['geometry'] ?? null,
+        default => $json,
+    };
+    $area = ZoneArea::normalize($geometry);
+    if (is_string($area)) {
+        $this->error($area);
+
+        return 1;
+    }
+    $settings->set(ZoneLocator::SERVICE_AREA_SETTING, $area);
+    app(AuditLogger::class)->log('delivery.service_area_updated', null, ['area' => $before ? 'défini' : null], ['area' => ['source' => basename($file), 'sha1' => sha1(json_encode($area))]]);
+    $this->info("Périmètre desservi enregistré ({$area['type']}, depuis ".basename($file).').');
+
+    return 0;
+})->purpose('Définir le périmètre desservi (contour GeoJSON) à partir d\'un fichier');
+
 // Verrou limité à 10 min (audit E10) : un processus tué ne bloque plus le rapprochement 24 h.
 Schedule::command('mk:reconcile-payments')->everyFiveMinutes()->withoutOverlapping(10);
 Schedule::command('queue:prune-failed', ['--hours' => 720])->dailyAt('03:45')->timezone('Africa/Dakar');
 Schedule::command('mk:purge-expired')->dailyAt('03:30')->timezone('Africa/Dakar');
+Schedule::command('mk:purge-delivery-positions')->dailyAt('03:35')->timezone('Africa/Dakar');
 Schedule::command('sanctum:prune-expired', ['--hours' => 24])->dailyAt('03:40')->timezone('Africa/Dakar');
 // Supervision (audit E9) : battement du planificateur lu par /health, alerte si la file de tâches déborde.
 Schedule::call(fn () => Cache::put(HealthController::SCHEDULER_HEARTBEAT, now()->getTimestamp(), now()->addHour()))->everyMinute()->name('health-heartbeat');

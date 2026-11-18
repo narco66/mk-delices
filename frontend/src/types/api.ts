@@ -111,6 +111,8 @@ export interface Quote {
   total_xof: number
   fulfillment_type?: 'delivery' | 'pickup'
   zone?: { id: string; name: string } | null
+  /** « position » : zone calculée par le serveur depuis la position ; « declared » : zone choisie. */
+  zone_source?: 'position' | 'declared'
   promotion?: { code: string; name: string } | null
   lead_minutes?: number
   issues: Issue[]
@@ -135,6 +137,8 @@ export interface Zone {
   districts: string | null
   delivery_fee_xof: number
   min_order_xof: number | null
+  /** Contour GeoJSON (coordonnées [lng, lat]) ; null = zone sans contour (choisie par le client). */
+  area?: GeoArea | null
   // admin
   active?: boolean
   partner_fee_xof?: number
@@ -156,6 +160,49 @@ export interface PublicConfig {
   payment_methods: PaymentMethod[]
   currency: 'XOF'
   timezone: string
+  maps?: MapsConfig
+}
+
+export interface MapsConfig {
+  /** Fond de carte commercial (null : pas de carte, seulement « Utiliser ma position » et la saisie). */
+  tiles_url: string | null
+  attribution: string
+  geocoding: boolean
+  default_center: { lat: number; lng: number; zoom: number }
+  bounds: { min_lat: number; max_lat: number; min_lng: number; max_lng: number }
+  /** Périmètre desservi (ex. ville de Dakar) ; null = toute la région, zone choisie par le client. */
+  service_area?: GeoArea | null
+}
+
+export type GeoArea = { type: 'Polygon'; coordinates: number[][][] } | { type: 'MultiPolygon'; coordinates: number[][][][] }
+
+export type LocationSource = 'gps' | 'map' | 'search' | 'saved'
+
+export interface PickedLocation {
+  lat: number
+  lng: number
+  source: LocationSource
+  accuracy_m?: number | null
+}
+
+export interface GeoPlace {
+  label: string
+  lat: number | null
+  lng: number | null
+  district: string | null
+  street: string | null
+}
+
+export interface GeoResolution {
+  point: { lat: number; lng: number }
+  zone: { id: string; name: string; delivery_fee_xof: number; min_order_xof: number | null } | null
+  zone_source: 'position' | 'declared'
+  zones_mapped: boolean
+  /** false : position hors du périmètre desservi (ex. hors de la ville de Dakar). */
+  in_service_area?: boolean
+  deliverable: boolean
+  suggestion: GeoPlace | null
+  geocoding: 'ok' | 'unavailable' | 'disabled'
 }
 
 export interface TimelineStep {
@@ -332,7 +379,18 @@ export interface AdminOrder {
   customer: { first_name: string | null; last_name: string | null; phone: string | null; email: string | null }
   customer_id: string | null
   zone?: { id: string; name: string } | null
-  address: { zone_name?: string | null; district?: string | null; street?: string | null; landmark?: string | null } | null
+  address: {
+    zone_name?: string | null
+    district?: string | null
+    street?: string | null
+    landmark?: string | null
+    lat?: number | null
+    lng?: number | null
+    location_source?: 'gps' | 'map' | 'search' | 'saved' | 'staff' | null
+    accuracy_m?: number | null
+    /** position : zone calculée depuis la position ; declared : choisie par le client (à vérifier) ; staff : équipe. */
+    zone_source?: 'position' | 'declared' | 'staff'
+  } | null
   slot_start_at: string | null
   slot_end_at: string | null
   customer_notes: string | null

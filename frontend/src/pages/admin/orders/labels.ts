@@ -94,3 +94,12 @@ export function chip(active: boolean): string {
     ? 'rounded-full border border-cocoa-700 bg-cocoa-700 px-3 py-1.5 text-xs font-semibold text-cream-50'
     : 'rounded-full border border-cocoa-100 bg-white px-3 py-1.5 text-xs font-semibold text-cocoa-700 hover:border-cocoa-300'
 }
+
+/** Origine de la position de livraison (adresse figée de la commande). */
+export const LOCATION_SOURCE_LABELS: Record<string, string> = {
+  gps: 'GPS du client',
+  map: 'Repère placé sur la carte',
+  search: "Recherche d'adresse",
+  saved: 'Adresse enregistrée',
+  staff: "Position saisie par l'équipe",
+}

@@ -1,7 +1,7 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery } from '@tanstack/react-query'
 import { AlertCircle, CalendarClock, CreditCard, Lock, MessageCircle, ShoppingBag, Tag, Trash2, Truck } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 import { Link, useNavigate } from 'react-router'
 import { toast } from 'sonner'
@@ -12,6 +12,7 @@ import { Badge, Card, Price, QuantityStepper } from '@/components/ui/Display'
 import { EmptyState, ErrorState, errorMessage, Notice, Skeleton, Spinner } from '@/components/ui/Feedback'
 import { Checkbox, Field, Input, Select, Textarea } from '@/components/ui/Form'
 import { useAuth } from '@/features/auth/AuthContext'
+import { LocationPicker } from '@/features/maps/LocationPicker'
 import { useCart } from '@/features/cart/CartContext'
 import { usePublicConfig, useZones } from '@/hooks/usePublicData'
 import { useSeo } from '@/hooks/useSeo'
@@ -19,7 +20,21 @@ import { api, ApiError, newIdempotencyKey } from '@/lib/api'
 import { cn } from '@/lib/cn'
 import { allergenLabel, formatXof, PAYMENT_LABELS } from '@/lib/format'
 import { orderStorage } from '@/lib/storage'
-import type { PublicOrder, Quote, Slot } from '@/types/api'
+import type { GeoResolution, PickedLocation, PublicOrder, Quote, Slot } from '@/types/api'
+
+/** Adresse enregistrée du client connecté (carnet d'adresses). */
+interface SavedAddress {
+  id: string
+  zone_id: string
+  label: string | null
+  district: string
+  street: string | null
+  landmark: string | null
+  lat: number | null
+  lng: number | null
+  location_accuracy_m: number | null
+  is_default: boolean
+}
 
 function Summary({ quote, compact = false }: { quote: Quote; compact?: boolean }) {
   return (
@@ -229,19 +244,71 @@ export function CheckoutPage() {
   })
   const { register, handleSubmit, setValue, setError, formState } = form
   const [zoneId, fulfillment, slot, method] = useWatch({ control: form.control, name: ['zone_id', 'fulfillment_type', 'slot_start_at', 'payment_method'] })
+  // Position de livraison confirmée par le client ; la zone (et les frais) en découlent côté serveur.
+  const [location, setLocation] = useState<PickedLocation | null>(null)
+  const [zoneFromPosition, setZoneFromPosition] = useState(false)
+  const savedAddresses = useQuery({
+    queryKey: ['account', 'addresses'],
+    enabled: !!me?.customer,
+    queryFn: async () => (await api.get<{ data: SavedAddress[] }>('/account/addresses')).data,
+  })
+
+  const onLocation = (loc: PickedLocation | null, res: GeoResolution | null) => {
+    setLocation(loc)
+    const fromPosition = !!loc && !!res?.zone && res.zone_source === 'position'
+    setZoneFromPosition(fromPosition)
+    if (fromPosition) setValue('zone_id', res!.zone!.id, { shouldValidate: true })
+  }
+  const [savedId, setSavedId] = useState('')
+  const applySavedAddress = (id: string) => {
+    setSavedId(id)
+    const a = savedAddresses.data?.find((x) => x.id === id)
+    if (!a) return
+    setValue('zone_id', a.zone_id, { shouldValidate: true })
+    setValue('district', a.district, { shouldValidate: true })
+    setValue('street', a.street ?? '')
+    setValue('landmark', a.landmark ?? '')
+    setLocation(a.lat !== null && a.lng !== null ? { lat: a.lat, lng: a.lng, source: 'saved', accuracy_m: a.location_accuracy_m } : null)
+    setZoneFromPosition(false)
+  }
 
   useEffect(() => {
     if (methods.length && !method) setValue('payment_method', methods[0].code)
   }, [methods, method, setValue])
 
   const quoteQuery = useQuery({
-    queryKey: ['quote', stored?.id, zoneId, fulfillment, cart?.promotion_code, cart?.subtotal_xof],
+    queryKey: ['quote', stored?.id, zoneId, fulfillment, cart?.promotion_code, cart?.subtotal_xof, location?.lat, location?.lng],
     enabled: !!stored && count > 0,
-    queryFn: async () => (await api.post<{ data: Quote }>('/checkout/quote', { zone_id: zoneId || null, fulfillment_type: fulfillment }, { headers: headers() })).data,
+    queryFn: async () => {
+      const position = fulfillment === 'delivery' && location ? { lat: location.lat, lng: location.lng } : {}
+      return (await api.post<{ data: Quote }>('/checkout/quote', { zone_id: zoneId || null, fulfillment_type: fulfillment, ...position }, { headers: headers() })).data
+    },
     placeholderData: (prev) => prev,
   })
   const quote = quoteQuery.data
+  // Devis en cours de recalcul (zone, position ou panier modifiés) : le total affiché n'est pas encore le bon.
+  const quoteRefreshing = quoteQuery.isFetching || quoteQuery.isPlaceholderData
   const slots = useMemo(() => quote?.slots ?? [], [quote])
+
+  // Adresse par défaut du client présélectionnée une seule fois (modifiable ensuite).
+  const defaultApplied = useRef(false)
+  useEffect(() => {
+    if (defaultApplied.current || !savedAddresses.data) return
+    defaultApplied.current = true
+    const def = savedAddresses.data.find((a) => a.is_default)
+    // Synchronisation unique avec une donnée chargée (le carnet d'adresses), pas un état dérivé.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (def && !form.getValues('district')) applySavedAddress(def.id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- application unique au chargement du carnet
+  }, [savedAddresses.data])
+
+  // La zone affichée suit TOUJOURS celle que le serveur a calculée depuis la position (ex. adresse enregistrée
+  // dont la zone a été redessinée) : le client ne voit jamais une zone différente de celle facturée.
+  const serverZone = fulfillment === 'delivery' && location && !quoteQuery.isPlaceholderData && quote?.zone_source === 'position' ? (quote.zone ?? null) : null
+  const zoneLocked = zoneFromPosition || serverZone !== null
+  useEffect(() => {
+    if (serverZone && serverZone.id !== zoneId) setValue('zone_id', serverZone.id, { shouldValidate: true })
+  }, [serverZone, zoneId, setValue])
 
   useEffect(() => {
     if (slot && slots.length && !slots.some((s) => s.start_at === slot)) setValue('slot_start_at', '')
@@ -267,6 +334,11 @@ export function CheckoutPage() {
       setValue('slot_start_at', '')
       quoteQuery.refetch()
     }
+    if (error.code === 'total_changed') {
+      // Le montant a changé depuis l'affichage (frais de zone modifiés) : rien n'est créé, nouveau total affiché.
+      quoteQuery.refetch()
+      return toast.warning(error.message)
+    }
     if (error.code === 'cart_converted') {
       const ref = (error.details as { reference?: string }).reference
       toast.info(`Ce panier correspond déjà à la commande ${ref ?? ''}.`)
@@ -282,7 +354,18 @@ export function CheckoutPage() {
       const payload = {
         customer: { first_name: values.first_name, last_name: values.last_name || null, phone: values.phone, email: values.email || null },
         fulfillment_type: values.fulfillment_type,
-        delivery: values.fulfillment_type === 'delivery' ? { zone_id: values.zone_id, district: values.district, street: values.street || null, landmark: values.landmark || null } : null,
+        delivery:
+          values.fulfillment_type === 'delivery'
+            ? {
+                zone_id: values.zone_id,
+                district: values.district,
+                street: values.street || null,
+                landmark: values.landmark || null,
+                ...(location ? { lat: location.lat, lng: location.lng, location_source: location.source, accuracy_m: location.accuracy_m ?? null } : {}),
+              }
+            : null,
+        // Le client valide le total qu'il voit : s'il a changé, le serveur refuse au lieu de facturer autre chose.
+        expected_total_xof: quote?.total_xof,
         slot_start_at: values.slot_start_at,
         payment_method: values.payment_method || null,
         notes: values.notes || null,
@@ -376,17 +459,54 @@ export function CheckoutPage() {
             )}
             {fulfillment === 'delivery' && (
               <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Zone de livraison" required error={formState.errors.zone_id?.message} className="sm:col-span-2">
-                  {(p) => (
-                    <Select {...p} {...register('zone_id')} disabled={zonesLoading}>
+                {(savedAddresses.data?.length ?? 0) > 0 && (
+                  <Field label="Mes adresses" className="sm:col-span-2">
+                    {(p) => (
+                      <Select {...p} value={savedId} onChange={(e) => applySavedAddress(e.target.value)}>
+                        <option value="">Choisir une adresse enregistrée…</option>
+                        {savedAddresses.data!.map((a) => (
+                          <option key={a.id} value={a.id}>
+                            {a.label || a.district} — {a.district}
+                            {a.is_default ? ' (par défaut)' : ''}
+                          </option>
+                        ))}
+                      </Select>
+                    )}
+                  </Field>
+                )}
+                <div className="sm:col-span-2">
+                  <LocationPicker
+                    value={location}
+                    onChange={onLocation}
+                    zoneId={zoneId}
+                    zones={zones}
+                    onSuggestion={(place) => {
+                      if (place.district && !form.getValues('district')) setValue('district', place.district, { shouldValidate: true })
+                      if (place.street && !form.getValues('street')) setValue('street', place.street)
+                    }}
+                  />
+                </div>
+                <Field
+                  label="Zone de livraison"
+                  required
+                  error={formState.errors.zone_id?.message}
+                  hint={zoneLocked ? 'Déterminée par votre position. Retirez la position pour la choisir vous-même.' : undefined}
+                  className="sm:col-span-2"
+                >
+                  {(p) =>
+                    zoneLocked ? (
+                      <Input {...p} readOnly value={zones?.find((z) => z.id === zoneId)?.name ?? ''} />
+                    ) : (
+                      <Select {...p} {...register('zone_id')} disabled={zonesLoading}>
                       <option value="">Choisir votre zone…</option>
                       {zones?.map((z) => (
                         <option key={z.id} value={z.id}>
                           {z.name} — {formatXof(z.delivery_fee_xof)}
                         </option>
                       ))}
-                    </Select>
-                  )}
+                      </Select>
+                    )
+                  }
                 </Field>
                 <Field label="Quartier" required error={formState.errors.district?.message}>
                   {(p) => <Input {...p} {...register('district')} autoComplete="address-level3" />}
@@ -518,8 +638,9 @@ export function CheckoutPage() {
               />
               <Checkbox {...register('marketing_consent')} label="J'accepte de recevoir les offres de MK Délices (facultatif)." />
             </div>
-            <Button type="submit" size="lg" className="mt-4 w-full" loading={submitting} disabled={!quote || blocking.length > 0} aria-describedby={blocking.length ? 'checkout-blocking' : undefined}>
-              Confirmer · {quote ? formatXof(quote.total_xof) : '…'}
+            {/* Validation bloquée pendant le recalcul du devis : le client valide toujours le total affiché. */}
+            <Button type="submit" size="lg" className="mt-4 w-full" loading={submitting} disabled={!quote || quoteRefreshing || blocking.length > 0} aria-describedby={blocking.length ? 'checkout-blocking' : undefined}>
+              Confirmer · {quote && !quoteRefreshing ? formatXof(quote.total_xof) : '…'}
             </Button>
             {blocking.length > 0 ? (
               <p id="checkout-blocking" className="mt-2 text-center text-xs font-medium text-warning-600">

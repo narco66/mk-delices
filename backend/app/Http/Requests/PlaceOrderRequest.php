@@ -26,8 +26,13 @@ class PlaceOrderRequest extends FormRequest
             'delivery.district' => [$delivery ? 'required' : 'nullable', 'string', 'min:2', 'max:120'],
             'delivery.street' => ['nullable', 'string', 'max:200'],
             'delivery.landmark' => ['nullable', 'string', 'max:255'],
-            'delivery.lat' => ['nullable', 'numeric', 'between:14.0,15.2'],
-            'delivery.lng' => ['nullable', 'numeric', 'between:-17.8,-16.8'],
+            // Région desservie contrôlée par GeoPoint (mkdelices.maps.bounds) : une seule source pour les bornes.
+            'delivery.lat' => ['nullable', 'numeric', 'between:-90,90', 'required_with:delivery.lng'],
+            'delivery.lng' => ['nullable', 'numeric', 'between:-180,180', 'required_with:delivery.lat'],
+            'delivery.location_source' => ['nullable', 'in:gps,map,search,saved'],
+            'delivery.accuracy_m' => ['nullable', 'integer', 'min:0', 'max:100000'],
+            // Total affiché au client au moment de valider : refus 409 s'il a changé (docs/audit-geolocalisation).
+            'expected_total_xof' => ['nullable', 'integer', 'min:0'],
             'slot_start_at' => ['required', 'date'],
             'payment_method' => ['nullable', 'string', 'max:30'],
             'promotion_code' => ['nullable', 'string', 'max:40'],

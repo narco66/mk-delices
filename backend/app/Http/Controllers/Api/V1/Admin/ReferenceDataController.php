@@ -2,9 +2,12 @@
 
 namespace App\Http\Controllers\Api\V1\Admin;
 
+use App\Domain\Geo\ZoneArea;
+use App\Domain\Geo\ZoneLocator;
 use App\Domain\Shared\AuditLogger;
 use App\Domain\Shared\DomainException;
 use App\Domain\Shared\Phone;
+use App\Domain\Shared\Settings;
 use App\Http\Controllers\Controller;
 use App\Models\Category;
 use App\Models\DeliveryPartner;
@@ -17,6 +20,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
+use Illuminate\Validation\ValidationException;
 
 /** Référentiels administrables : catégories, zones, livreurs partenaires, promotions. */
 class ReferenceDataController extends Controller
@@ -52,6 +56,31 @@ class ReferenceDataController extends Controller
         return response()->json(['data' => DeliveryZone::query()->withCount('partners')->orderBy('position')->orderBy('name')->get()]);
     }
 
+    /** Périmètre desservi (ex. ville de Dakar) : contour unique, distinct des zones tarifaires. */
+    public function serviceArea(ZoneLocator $locator): JsonResponse
+    {
+        return response()->json(['data' => ['area' => $locator->serviceArea()]]);
+    }
+
+    public function saveServiceArea(Request $request, ZoneLocator $locator, Settings $settings): JsonResponse
+    {
+        $data = $request->validate(['area' => ['present', 'nullable', 'array']]);
+        $area = null;
+        if ($data['area'] !== null) {
+            $area = ZoneArea::normalize($data['area']);
+            if (is_string($area)) {
+                throw ValidationException::withMessages(['area' => $area]);
+            }
+        }
+        $before = $locator->serviceArea();
+        $settings->set(ZoneLocator::SERVICE_AREA_SETTING, $area);
+        // Journal : empreinte et taille du contour (le contour complet reste consultable dans le paramètre).
+        $summary = fn (?array $a) => $a === null ? null : ['type' => $a['type'], 'vertices' => array_sum(array_map('count', $a['type'] === 'Polygon' ? $a['coordinates'] : array_merge(...$a['coordinates']))), 'sha1' => sha1(json_encode($a))];
+        $this->audit->log('delivery.service_area_updated', null, ['area' => $summary($before)], ['area' => $summary($area)]);
+
+        return response()->json(['data' => ['area' => $area]]);
+    }
+
     public function saveZone(Request $request, ?string $id = null): JsonResponse
     {
         $zone = $id ? DeliveryZone::query()->findOrFail($id) : new DeliveryZone;
@@ -65,7 +94,20 @@ class ReferenceDataController extends Controller
             'partner_fee_xof' => ['required', 'integer', 'min:0', 'max:1000000'],
             'extra_lead_minutes' => ['nullable', 'integer', 'min:0', 'max:1440'],
             'position' => ['nullable', 'integer'],
+            // Contour GeoJSON dessiné sur la carte ; null = zone « déclarée » (sans contrôle de position).
+            'area' => ['nullable', 'array'],
         ]);
+        if ($request->has('area')) {
+            if ($data['area'] === null) {
+                $data['area'] = null;
+            } else {
+                $area = ZoneArea::normalize($data['area']);
+                if (is_string($area)) {
+                    throw ValidationException::withMessages(['area' => $area]);
+                }
+                $data['area'] = $area;
+            }
+        }
         $before = $zone->exists ? $zone->toArray() : null;
         $zone->fill($data + ['slug' => $zone->slug ?? Str::slug($data['name']).'-'.Str::lower(Str::random(4))])->save();
         // Les frais des commandes déjà confirmées restent figés (snapshot) — APP-FLOW §3.

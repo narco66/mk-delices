@@ -82,7 +82,53 @@ class StatsService
             'timeseries' => $this->timeseries($from, $to, $tz),
             'top_products' => $this->topProducts($range),
             'status_breakdown' => DB::select('SELECT status, count(*)::int AS count FROM orders WHERE is_test = false AND coalesce(confirmed_at, created_at) BETWEEN ? AND ? GROUP BY status ORDER BY count DESC', $range),
+            'by_zone' => $this->byZone($range),
         ];
+    }
+
+    /**
+     * Indicateurs logistiques par zone (docs/audit-geolocalisation) : uniquement des agrégats, jamais de position
+     * individuelle. « positioned » = commandes avec position GPS/carte ; « declared » = zone choisie par le client.
+     */
+    private function byZone(array $range): array
+    {
+        $rows = DB::select(
+            "SELECT z.id AS zone_id, coalesce(z.name, 'Retrait / sans zone') AS zone_name,
+                    count(*) FILTER (WHERE o.status <> 'draft')::int AS orders,
+                    count(*) FILTER (WHERE ".self::SALE_O.')::int AS paid_orders,
+                    coalesce(sum(LEAST(o.paid_xof - o.refunded_xof, o.total_xof)) FILTER (WHERE '.self::SALE_O.'), 0)::bigint AS revenue_net_xof,
+                    coalesce(sum(o.delivery_fee_xof) FILTER (WHERE '.self::SALE_O."), 0)::bigint AS delivery_fees_xof,
+                    count(*) FILTER (WHERE o.address_snapshot->>'lat' IS NOT NULL OR o.address_snapshot->>'position_purged_at' IS NOT NULL)::int AS positioned,
+                    count(*) FILTER (WHERE o.address_snapshot->>'zone_source' = 'declared')::int AS declared,
+                    coalesce(sum(a.delivered), 0)::int AS delivered,
+                    coalesce(sum(a.failed), 0)::int AS failed,
+                    coalesce(sum(a.late), 0)::int AS late,
+                    sum(a.trip_minutes) / nullif(count(a.trip_minutes), 0) AS avg_trip_minutes
+             FROM orders o
+             LEFT JOIN delivery_zones z ON z.id = o.zone_id
+             -- Missions agrégées PAR COMMANDE (un échec suivi d'une relivraison ne double pas la commande).
+             LEFT JOIN (
+                SELECT a.order_id,
+                       count(*) FILTER (WHERE a.status = 'delivered') AS delivered,
+                       count(*) FILTER (WHERE a.status = 'failed') AS failed,
+                       count(*) FILTER (WHERE a.status = 'delivered' AND a.delivered_at > oo.slot_end_at) AS late,
+                       avg(extract(epoch FROM (a.delivered_at - a.picked_up_at)) / 60) FILTER (WHERE a.status = 'delivered' AND a.picked_up_at IS NOT NULL) AS trip_minutes
+                FROM delivery_assignments a JOIN orders oo ON oo.id = a.order_id
+                WHERE a.status IN ('delivered', 'failed')
+                GROUP BY a.order_id
+             ) a ON a.order_id = o.id
+             WHERE o.is_test = false AND coalesce(o.confirmed_at, o.created_at) BETWEEN ? AND ?
+             GROUP BY z.id, z.name
+             ORDER BY orders DESC",
+            $range,
+        );
+
+        return array_map(fn ($r) => [
+            'zone_id' => $r->zone_id, 'zone_name' => $r->zone_name, 'orders' => $r->orders, 'paid_orders' => $r->paid_orders,
+            'revenue_net_xof' => (int) $r->revenue_net_xof, 'delivery_fees_xof' => (int) $r->delivery_fees_xof,
+            'positioned' => $r->positioned, 'declared' => $r->declared, 'delivered' => $r->delivered, 'failed' => $r->failed, 'late' => $r->late,
+            'avg_trip_minutes' => $r->avg_trip_minutes !== null ? (int) round((float) $r->avg_trip_minutes) : null,
+        ], $rows);
     }
 
     /** Indicateurs opérationnels instantanés (indépendants de la période). */

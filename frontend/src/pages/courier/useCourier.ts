@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { directionsUrl } from '@/features/maps/geo'
 import { api } from '@/lib/api'
 import type { Mission } from '@/types/api'
 
@@ -28,7 +29,7 @@ export function useCourierOverview() {
 }
 
 export function mapsUrl(m: Pick<Mission, 'lat' | 'lng' | 'district' | 'landmark' | 'street' | 'zone_name'>): string | null {
-  if (m.lat !== null && m.lng !== null) return `https://www.google.com/maps/search/?api=1&query=${m.lat},${m.lng}`
+  if (m.lat !== null && m.lng !== null) return directionsUrl(m.lat, m.lng)
   const parts = [m.street, m.landmark, m.district, m.zone_name?.replace(/\s*\(démo\)\s*/i, ''), 'Dakar'].filter(Boolean)
   return m.street || m.landmark ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(parts.join(', '))}` : null
 }

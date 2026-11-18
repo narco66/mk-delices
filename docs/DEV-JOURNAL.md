@@ -56,5 +56,24 @@
 - **Anomalies corrigées pendant la génération :** dérive des dates due au voyage dans le temps, chargement paresseux en mode strict, dépassement du maximum par commande ; une première génération interrompue a été exclue (`is_test`) sans suppression.
 - **Accès :** `docs/ACCES-DEMONSTRATION.md`.
 
+## 17/11/2026 — Espace livreur, puis phase 7 : déploiement et formation
+- **Espace livreur :** audit (`AUDIT-ESPACE-LIVREUR-2026-11-17.md`) et corrections ; décisions validées et implémentées : règle « contact + 10 min » pour la course échouée, code de remise à 4 chiffres, notifications du navigateur aux livreurs (web push VAPID). Commit `a17b8a9`, CI verte.
+- **Préproduction mise à jour** en `a17b8a9` (sauvegarde chiffrée préalable, 2 migrations, clés VAPID générées sur le serveur, règles nginx `sw.js` et manifeste, types de preuve « code » en premier).
+- **Incident de déploiement :** le script s'est arrêté à l'étape 7/9 (`chgrp` refusé sur des fichiers créés par PHP) ; site resté en maintenance quelques minutes, remis en ligne en jouant la fin du script à la main. Script corrigé (seuls les fichiers de l'utilisateur qui déploie sont modifiés).
+- **Sauvegardes :** sommes de contrôle vérifiées, chiffrement pour la bonne clé ; test de restauration en attente de la clé privée (détenue hors serveur).
+- **Documents P7 :** `11-DEPLOYMENT/RUNBOOK-EXPLOITATION.md`, `11-DEPLOYMENT/GO-NO-GO-PRODUCTION.md`, `guides/PLAN-DE-FORMATION.md`.
+
+## 17-18/11/2026 — Géolocalisation : implémentation puis audit
+- **Implémentation (17/11, non commitée) :** zones dessinées (GeoJSON, sans PostGIS), zone et frais déduits de la position côté serveur, `/geo/resolve` et `/geo/search` (MapTiler côté serveur, inactif sans clé), sélecteur de position (GPS, carte Leaflet chargée à la demande), montant attendu au checkout (409 `total_changed`), statistiques par zone.
+- **Audit (18/11) :** 12 anomalies relevées et corrigées. Les principales : CSP qui aurait bloqué les tuiles, validation possible pendant le recalcul du devis (trouvée par le nouveau test E2E), zone affichée ≠ zone facturée, adresse par défaut et modification d'adresse absentes, filtres admin par zone, purge configurable des positions (désactivée par défaut).
+- **Documents :** `audit-geolocalisation/01` à `09`.
+- **À déployer :** migration additive et snippet nginx.
+- **Décisions de MK Délices (18/11), mises en œuvre :**
+  - périmètre desservi = ville de Dakar (contour OSM, sans Gorée), modifiable dans Zones ;
+  - conservation des positions : 90 jours ;
+  - Laravel Boost installé (développement) ;
+  - commit et déploiement en préproduction.
+- **En attente :** les clés MapTiler (compte ouvert).
+
 ## Travaux restants (voir rapport final §15)
 Décisions métier/juridiques, contrats PSP, hébergement, sauvegardes, tests de charge, test avec lecteur d'écran, exécution réelle du déploiement et du test de restauration une fois l'hébergeur choisi.

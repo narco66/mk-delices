@@ -78,6 +78,9 @@ class OrderController extends Controller
             'from' => ['nullable', 'date'],
             'to' => ['nullable', 'date'],
             'slot_date' => ['nullable', 'date'],
+            // Géolocalisation : commandes d'une zone ('none' = sans zone, retrait) et origine de la zone.
+            'zone_id' => ['nullable', 'regex:/^(none|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i'],
+            'zone_source' => ['nullable', 'in:position,declared,staff'],
             'include_test' => ['nullable', 'boolean'],
             'sort' => ['nullable', 'in:created_desc,created_asc,slot_asc,total_desc'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
@@ -88,6 +91,8 @@ class OrderController extends Controller
             ->when($filters['channel'] ?? null, fn ($q, $c) => $q->where('channel', $c))
             ->when($filters['from'] ?? null, fn ($q, $d) => $q->where('created_at', '>=', $d))
             ->when($filters['to'] ?? null, fn ($q, $d) => $q->where('created_at', '<=', $d.' 23:59:59'))
+            ->when($filters['zone_id'] ?? null, fn ($q, $z) => $z === 'none' ? $q->whereNull('zone_id') : $q->where('zone_id', $z))
+            ->when($filters['zone_source'] ?? null, fn ($q, $s) => $q->whereRaw("address_snapshot->>'zone_source' = ?", [$s]))
             ->when($filters['slot_date'] ?? null, fn ($q, $d) => $q->whereRaw("(slot_start_at AT TIME ZONE 'Africa/Dakar')::date = ?", [$d]))
             ->when(! $request->boolean('include_test'), fn ($q) => $q->where('is_test', false))
             ->when($filters['q'] ?? null, function ($q, $term) {

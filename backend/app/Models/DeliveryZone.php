@@ -13,7 +13,7 @@ class DeliveryZone extends Model
 
     protected $fillable = [
         'name', 'slug', 'description', 'districts', 'active', 'delivery_fee_xof', 'min_order_xof',
-        'partner_fee_xof', 'extra_lead_minutes', 'position', 'is_demo',
+        'partner_fee_xof', 'extra_lead_minutes', 'position', 'is_demo', 'area',
     ];
 
     protected function casts(): array
@@ -21,6 +21,8 @@ class DeliveryZone extends Model
         return [
             'active' => 'boolean', 'is_demo' => 'boolean', 'delivery_fee_xof' => 'integer',
             'min_order_xof' => 'integer', 'partner_fee_xof' => 'integer', 'extra_lead_minutes' => 'integer',
+            // Contour GeoJSON (Polygon/MultiPolygon) dessiné dans le back-office ; null = zone « déclarée ».
+            'area' => 'array',
         ];
     }
 

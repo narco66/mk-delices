@@ -12,10 +12,11 @@ import { ErrorState, errorMessage, Notice, Skeleton } from '@/components/ui/Feed
 import { Checkbox, Field, Input, Select, Textarea } from '@/components/ui/Form'
 import { useAuth } from '@/features/auth/AuthContext'
 import { InvoiceList } from '@/features/invoices/InvoiceList'
+import { directionsUrl } from '@/features/maps/geo'
 import { api, ApiError } from '@/lib/api'
 import { allergenLabel, CHANNEL_LABELS, formatDateTime, formatSlot, formatXof, PAYMENT_LABELS } from '@/lib/format'
 import type { AdminOrder, OrderEvent, Zone } from '@/types/api'
-import { ACTION_LABELS, INCIDENT_LABELS, ORDER_STATUS_LABELS, PAYMENT_ATTEMPT_LABELS, providerLabel, REFUND_STATUS_LABELS } from './labels'
+import { ACTION_LABELS, INCIDENT_LABELS, LOCATION_SOURCE_LABELS, ORDER_STATUS_LABELS, PAYMENT_ATTEMPT_LABELS, providerLabel, REFUND_STATUS_LABELS } from './labels'
 
 interface OrderDetailResponse {
   data: AdminOrder
@@ -292,6 +293,29 @@ export function OrderDetailPage() {
                 label="Adresse"
                 value={[order.address.zone_name, order.address.district, order.address.street, order.address.landmark ? `Repère : ${order.address.landmark}` : null].filter(Boolean).join(' · ') || '—'}
               />
+            )}
+            {order.address && order.fulfillment_type === 'delivery' && (
+              <Info
+                label="Position"
+                value={
+                  order.address.lat != null && order.address.lng != null ? (
+                    <span className="flex flex-wrap items-center gap-2">
+                      <a href={directionsUrl(order.address.lat, order.address.lng)} target="_blank" rel="noopener noreferrer" className="text-raspberry-600 hover:underline">
+                        Voir sur la carte
+                      </a>
+                      <span className="text-cocoa-500">
+                        {LOCATION_SOURCE_LABELS[order.address.location_source ?? ''] ?? 'Position fournie'}
+                        {order.address.accuracy_m ? ` · ± ${order.address.accuracy_m} m` : ''}
+                      </span>
+                    </span>
+                  ) : (
+                    <span className="text-cocoa-500">Aucune (adresse saisie à la main)</span>
+                  )
+                }
+              />
+            )}
+            {order.address?.zone_source === 'declared' && order.status === 'pending_confirmation' && (
+              <Notice tone="warning">Zone choisie par le client, non vérifiée par une position : contrôlez le quartier avant d'accepter.</Notice>
             )}
             <Info label="Créneau" value={formatSlot(order.slot_start_at, order.slot_end_at)} />
             <Info label="Moyen de paiement" value={order.payment_method ? (PAYMENT_LABELS[order.payment_method] ?? order.payment_method) : 'Non choisi'} />

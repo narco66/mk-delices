@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\V1\CatalogController;
 use App\Http\Controllers\Api\V1\CheckoutController;
 use App\Http\Controllers\Api\V1\ContentController;
 use App\Http\Controllers\Api\V1\Courier\MissionController;
+use App\Http\Controllers\Api\V1\GeoController;
 use App\Http\Controllers\Api\V1\OrderTrackingController;
 use App\Http\Controllers\Api\V1\PaymentSimulatorController;
 use App\Http\Controllers\Api\V1\PaymentWebhookController;
@@ -31,6 +32,11 @@ Route::middleware('throttle:api')->group(function () {
     Route::get('content/home', [ContentController::class, 'home']);
     Route::get('content/pages/{slug}', [ContentController::class, 'page']);
     Route::get('delivery/zones', [ContentController::class, 'zones']);
+    // Géolocalisation (site et mobile) : zone calculée par le serveur, suggestions d'adresse.
+    Route::middleware('throttle:geo')->group(function () {
+        Route::post('geo/resolve', [GeoController::class, 'resolve']);
+        Route::get('geo/search', [GeoController::class, 'search']);
+    });
     Route::get('promotions', [ContentController::class, 'promotions']);
     Route::get('catalog/categories', [CatalogController::class, 'categories']);
     Route::get('catalog/products', [CatalogController::class, 'products']);
@@ -81,6 +87,7 @@ Route::middleware('throttle:api')->group(function () {
             Route::get('addresses', [AccountController::class, 'addresses']);
             Route::post('addresses', [AccountController::class, 'storeAddress']);
             Route::put('addresses/{id}', [AccountController::class, 'updateAddress']);
+            Route::post('addresses/{id}/default', [AccountController::class, 'defaultAddress']);
             Route::delete('addresses/{id}', [AccountController::class, 'destroyAddress']);
         });
 
@@ -172,6 +179,8 @@ Route::middleware('throttle:api')->group(function () {
                 Route::get('zones', [Ref::class, 'zones'])->middleware('permission:zones.view');
                 Route::post('zones', [Ref::class, 'saveZone'])->middleware('permission:zones.manage');
                 Route::put('zones/{id}', [Ref::class, 'saveZone'])->middleware('permission:zones.manage');
+                Route::get('service-area', [Ref::class, 'serviceArea'])->middleware('permission:zones.view');
+                Route::put('service-area', [Ref::class, 'saveServiceArea'])->middleware('permission:zones.manage');
                 Route::middleware('permission:deliveries.view')->group(function () {
                     Route::get('board', [DeliveryController::class, 'board']);
                     Route::get('missions', [DeliveryController::class, 'missions']);

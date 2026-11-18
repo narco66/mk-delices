@@ -1,7 +1,7 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { MapPin, Plus } from 'lucide-react'
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { toast } from 'sonner'
 import { z } from 'zod'
@@ -10,9 +10,28 @@ import { Badge, Card, Modal, PageHeader } from '@/components/ui/Display'
 import { EmptyState, ErrorState, errorMessage, Notice, Skeleton } from '@/components/ui/Feedback'
 import { Checkbox, Field, Input, Textarea } from '@/components/ui/Form'
 import { useAuth } from '@/features/auth/AuthContext'
+import { usePublicConfig } from '@/hooks/usePublicData'
 import { api, ApiError } from '@/lib/api'
 import { formatXof } from '@/lib/format'
-import type { Zone } from '@/types/api'
+import type { GeoArea, Zone } from '@/types/api'
+import { ServiceAreaCard } from './ServiceAreaCard'
+
+const AreaEditor = lazy(() => import('@/features/maps/LeafletMaps').then((m) => ({ default: m.AreaEditor })))
+
+/** Contour simple (un polygone sans trou) <-> points [lat, lng] de l'éditeur ; null = contour complexe. */
+function areaToPoints(area: GeoArea | null | undefined): [number, number][] | null {
+  if (!area) return []
+  if (area.type !== 'Polygon' || area.coordinates.length !== 1) return null
+  const ring = area.coordinates[0].map(([lng, lat]) => [lat, lng] as [number, number])
+  const closed = ring.length > 1 && ring[0][0] === ring[ring.length - 1][0] && ring[0][1] === ring[ring.length - 1][1]
+  return closed ? ring.slice(0, -1) : ring
+}
+
+function pointsToArea(points: [number, number][]): GeoArea | null {
+  if (points.length < 3) return null
+  const ring = points.map(([lat, lng]) => [lng, lat])
+  return { type: 'Polygon', coordinates: [[...ring, ring[0]]] }
+}
 
 export function ZonesPage() {
   const { can } = useAuth()
@@ -39,6 +58,7 @@ export function ZonesPage() {
       />
       <Notice>Les frais de livraison des commandes déjà confirmées restent figés : une modification ne s'applique qu'aux nouveaux devis.</Notice>
       {!canManage && <Notice tone="warning">Consultation seule : la modification des zones est réservée à l'administrateur.</Notice>}
+      <ServiceAreaCard canManage={canManage} zones={data ?? []} />
 
       {isLoading ? (
         <Skeleton className="h-64" />
@@ -56,6 +76,7 @@ export function ZonesPage() {
                 <th className="px-4 py-3 text-right">Minimum</th>
                 <th className="px-4 py-3 text-right">Rémunération livreur</th>
                 <th className="px-4 py-3 text-right">Délai suppl.</th>
+                <th className="px-4 py-3">Contour</th>
                 <th className="px-4 py-3">Livreurs</th>
                 <th className="px-4 py-3" />
               </tr>
@@ -75,6 +96,7 @@ export function ZonesPage() {
                   <td className="px-4 py-3 text-right tabular-nums">{z.min_order_xof ? formatXof(z.min_order_xof) : '—'}</td>
                   <td className="px-4 py-3 text-right tabular-nums">{formatXof(z.partner_fee_xof ?? 0)}</td>
                   <td className="px-4 py-3 text-right">{z.extra_lead_minutes ? `${z.extra_lead_minutes} min` : '—'}</td>
+                  <td className="px-4 py-3">{z.area ? <Badge tone="success">Dessiné</Badge> : <span className="text-cocoa-500">Non</span>}</td>
                   <td className="px-4 py-3">{z.partners_count ?? 0}</td>
                   <td className="px-4 py-3 text-right">
                     {canManage && (
@@ -89,7 +111,9 @@ export function ZonesPage() {
           </table>
         </Card>
       )}
-      {editing && canManage && <ZoneForm zone={editing === 'new' ? null : editing} onClose={() => setEditing(null)} />}
+      {editing && canManage && (
+        <ZoneForm zone={editing === 'new' ? null : editing} others={(data ?? []).filter((z) => editing === 'new' || z.id !== editing.id)} onClose={() => setEditing(null)} />
+      )}
     </div>
   )
 }
@@ -110,8 +134,31 @@ const schema = z.object({
 })
 type Form = z.infer<typeof schema>
 
-function ZoneForm({ zone, onClose }: { zone: Zone | null; onClose: () => void }) {
+function ZoneForm({ zone, others, onClose }: { zone: Zone | null; others: Zone[]; onClose: () => void }) {
   const queryClient = useQueryClient()
+  const { data: config } = usePublicConfig()
+  const maps = config?.maps
+  const initialPoints = areaToPoints(zone?.area)
+  const [points, setPoints] = useState<[number, number][]>(initialPoints ?? [])
+  const [areaTouched, setAreaTouched] = useState(false)
+  const [geojson, setGeojson] = useState('')
+  const [areaError, setAreaError] = useState<string | null>(null)
+  const editPoints = (p: [number, number][]) => {
+    setPoints(p)
+    setAreaTouched(true)
+  }
+  const importGeojson = () => {
+    try {
+      const parsed = JSON.parse(geojson)
+      const geometry = (parsed.type === 'Feature' ? parsed.geometry : parsed.type === 'FeatureCollection' ? parsed.features?.[0]?.geometry : parsed) as GeoArea
+      const pts = areaToPoints(geometry)
+      if (!pts || pts.length < 3) throw new Error('invalid')
+      editPoints(pts)
+      setAreaError(null)
+    } catch {
+      setAreaError('GeoJSON non reconnu : un seul polygone (Polygon) sans trou est attendu.')
+    }
+  }
   const { register, handleSubmit, formState, setError } = useForm<Form>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -138,6 +185,8 @@ function ZoneForm({ zone, onClose }: { zone: Zone | null; onClose: () => void })
         extra_lead_minutes: v.extra_lead_minutes ? Number(v.extra_lead_minutes) : 0,
         position: v.position ? Number(v.position) : 0,
         active: v.active,
+        // Contour envoyé seulement s'il a été modifié (un contour complexe existant reste intact).
+        ...(areaTouched ? { area: pointsToArea(points) } : {}),
       }
       return zone ? api.put(`/admin/delivery/zones/${zone.id}`, body) : api.post('/admin/delivery/zones', body)
     },
@@ -148,7 +197,9 @@ function ZoneForm({ zone, onClose }: { zone: Zone | null; onClose: () => void })
       onClose()
     },
     onError: (e) => {
-      if (e instanceof ApiError) Object.entries(e.fieldErrors).forEach(([k, m]) => setError(k as keyof Form, { message: m[0] }))
+      if (e instanceof ApiError) {
+        Object.entries(e.fieldErrors).forEach(([k, m]) => (k === 'area' ? setAreaError(m[0]) : setError(k as keyof Form, { message: m[0] })))
+      }
       toast.error(errorMessage(e))
     },
   })
@@ -177,11 +228,47 @@ function ZoneForm({ zone, onClose }: { zone: Zone | null; onClose: () => void })
         <Field label="Commande minimum (FCFA)" error={err.min_order_xof?.message}>{(p) => <Input {...p} inputMode="numeric" {...register('min_order_xof')} />}</Field>
         <Field label="Rémunération livreur (FCFA)" required error={err.partner_fee_xof?.message}>{(p) => <Input {...p} inputMode="numeric" {...register('partner_fee_xof')} />}</Field>
         <Field label="Délai supplémentaire (min)" error={err.extra_lead_minutes?.message}>{(p) => <Input {...p} inputMode="numeric" {...register('extra_lead_minutes')} />}</Field>
-        <Field label="Ordre d'affichage" error={err.position?.message}>{(p) => <Input {...p} inputMode="numeric" {...register('position')} />}</Field>
+        <Field label="Ordre d'affichage" hint="Si deux contours se chevauchent, le plus petit numéro l'emporte." error={err.position?.message}>{(p) => <Input {...p} inputMode="numeric" {...register('position')} />}</Field>
         <div className="flex items-end">
           <Checkbox label="Zone active" {...register('active')} />
         </div>
         <Field label="Description" className="sm:col-span-2">{(p) => <Textarea {...p} {...register('description')} />}</Field>
+        <fieldset className="space-y-3 sm:col-span-2">
+          <legend className="font-semibold">Contour sur la carte</legend>
+          <p className="text-sm text-cocoa-500">
+            Avec un contour, la zone (et ses frais) est déterminée automatiquement par la position du client ; une position hors de tous les contours ne peut pas être commandée en ligne. Sans contour, le client choisit la zone lui-même.
+          </p>
+          {initialPoints === null && !areaTouched ? (
+            <Notice tone="info">Contour complexe (plusieurs parties) conservé. Effacez-le pour en dessiner un nouveau.</Notice>
+          ) : maps?.tiles_url ? (
+            <Suspense fallback={<Skeleton className="h-96" />}>
+              <AreaEditor maps={maps} points={points} onChange={editPoints} others={others} />
+            </Suspense>
+          ) : (
+            <Notice tone="warning">Fond de carte non configuré (MAPS_TILES_URL) : importez un contour GeoJSON ci-dessous.</Notice>
+          )}
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="text-cocoa-500">
+              {points.length} point(s){points.length > 0 && points.length < 3 ? ' (3 minimum)' : ''}
+            </span>
+            <Button type="button" size="sm" variant="secondary" disabled={points.length === 0} onClick={() => editPoints(points.slice(0, -1))}>
+              Retirer le dernier point
+            </Button>
+            <Button type="button" size="sm" variant="ghost" disabled={points.length === 0 && initialPoints !== null} onClick={() => editPoints([])}>
+              Effacer le contour
+            </Button>
+          </div>
+          <details className="text-sm">
+            <summary className="cursor-pointer text-cocoa-500">Importer un contour GeoJSON</summary>
+            <div className="mt-2 space-y-2">
+              <Textarea aria-label="Contour GeoJSON" value={geojson} onChange={(e) => setGeojson(e.target.value)} rows={4} placeholder="Polygon GeoJSON, coordonnées [longitude, latitude]" />
+              <Button type="button" size="sm" variant="secondary" onClick={importGeojson} disabled={!geojson.trim()}>
+                Importer
+              </Button>
+            </div>
+          </details>
+          {areaError && <Notice tone="error">{areaError}</Notice>}
+        </fieldset>
       </form>
     </Modal>
   )

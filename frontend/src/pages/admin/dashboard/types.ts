@@ -22,6 +22,20 @@ export interface StatsSummary {
   timeseries: { day: string; revenue_net_xof: number; orders: number }[]
   top_products: { product_id: string; name: string; quantity: number; revenue_xof: number }[]
   status_breakdown: { status: string; count: number }[]
+  by_zone: {
+    zone_id: string | null
+    zone_name: string
+    orders: number
+    paid_orders: number
+    revenue_net_xof: number
+    delivery_fees_xof: number
+    positioned: number
+    declared: number
+    delivered: number
+    failed: number
+    late: number
+    avg_trip_minutes: number | null
+  }[]
 }
 
 export interface Operations {

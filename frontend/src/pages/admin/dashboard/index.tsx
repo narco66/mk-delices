@@ -11,6 +11,7 @@ import { formatDateTime, formatXof, todayDakar } from '@/lib/format'
 import { RankedBars, TimeseriesCharts } from './charts'
 import { statusItems, topProductItems } from './chartData'
 import { KpiGrid, StatTile } from './KpiGrid'
+import { ZoneTable } from './ZoneTable'
 import type { DashboardData, Operations, StatsSummary } from './types'
 
 interface OpCard {
@@ -191,6 +192,7 @@ export function StatsPage() {
             <RankedBars title="Meilleures ventes (quantités)" items={topProductItems(data.top_products)} empty="Aucune vente payée sur la période." />
             <RankedBars title="Répartition des commandes par état" items={statusItems(data.status_breakdown)} empty="Aucune commande sur la période." />
           </div>
+          <ZoneTable rows={data.by_zone ?? []} />
           {data.kpis.paid_orders === 0 && data.kpis.confirmed_orders === 0 ? (
             <EmptyState title="Aucune activité sur cette période" description="Élargissez la période ou attendez les premières commandes." />
           ) : null}

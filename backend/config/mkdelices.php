@@ -22,6 +22,29 @@ return [
         'backup_status_file' => env('HEALTH_BACKUP_STATUS_FILE'),
     ],
 
+    // Cartes et géolocalisation (DEC-GEO-01 : fond OpenStreetMap via un fournisseur COMMERCIAL ; jamais les
+    // serveurs publics d'OpenStreetMap en production). Sans fond de carte, le site propose uniquement « Utiliser
+    // ma position » et la saisie manuelle ; sans géocodage, pas de recherche d'adresse ni de quartier suggéré.
+    'maps' => [
+        // Modèle d'URL des tuiles raster {z}/{x}/{y} (clé « navigateur » restreinte au domaine du site).
+        'tiles_url' => env('MAPS_TILES_URL'),
+        'tiles_attribution' => env('MAPS_TILES_ATTRIBUTION', '© OpenStreetMap contributors'),
+        // Géocodage côté serveur (la clé n'est jamais envoyée au navigateur) : maptiler | none.
+        'geocoder' => env('MAPS_GEOCODER', 'none'),
+        'geocoder_key' => env('MAPS_GEOCODER_KEY'),
+        'geocoder_timeout' => (int) env('MAPS_GEOCODER_TIMEOUT', 4),
+        // Mise en cache des réponses de géocodage (secondes) : 0 tant que la licence du fournisseur n'est pas vérifiée.
+        'geocoder_cache_seconds' => (int) env('MAPS_GEOCODER_CACHE_SECONDS', 0),
+        // Région acceptée pour une position de livraison (Dakar et environs) et centre par défaut de la carte.
+        'bounds' => ['min_lat' => 14.0, 'max_lat' => 15.2, 'min_lng' => -17.8, 'max_lng' => -16.8],
+        'default_center' => ['lat' => 14.7167, 'lng' => -17.4677, 'zoom' => 12],
+        // Conservation des positions GPS dans les commandes terminées (livrées, annulées, refusées), en jours après
+        // le créneau. 90 j (décision MK Délices du 18/11/2026) : historique de localisation court (référence CNIL :
+        // 2 mois) + marge pour réclamations et remboursements. 0 = purge désactivée.
+        // Seules lat/lng sont effacées : quartier, rue et repère restent (pièce de la commande et de la facture).
+        'position_retention_days' => (int) env('MAPS_POSITION_RETENTION_DAYS', 90),
+    ],
+
     // Notifications du navigateur aux livreurs (web push). Clés générées par `php artisan mk:vapid-keys` ;
     // sans clés, la fonction est simplement désactivée (aucun bouton « Activer les notifications »).
     'push' => [
@@ -82,6 +105,8 @@ return [
         ], true, true, 'Moyens de paiement activés (aucun contrat marchand validé à ce jour)'],
         'payments.require_payment_before_acceptance' => ['payments', true, false, true, 'Exiger un paiement confirmé avant acceptation (hors paiement à la livraison)'],
         'policies.cancellation' => ['policies', null, true, true, 'Politique d\'annulation et de remboursement (à rédiger et valider)'],
+        // Périmètre desservi (contour GeoJSON) : géré dans Opérations > Zones, pas dans la page Paramètres.
+        'delivery.service_area' => ['delivery', null, false, true, 'Périmètre desservi (contour GeoJSON) : une position hors de ce périmètre ne peut pas commander en ligne'],
         'delivery.proof_types' => ['delivery', ['recipient_confirmation', 'photo_reference', 'code'], false, true, 'Types de preuve de remise acceptés'],
         'delivery.incident_reasons' => ['delivery', ['client_absent', 'adresse_introuvable', 'client_injoignable', 'refus_client', 'produit_endommage', 'autre'], false, false, 'Motifs d\'échec de livraison'],
         'delivery.client_fault_min_wait_minutes' => ['delivery', 10, false, true, 'Attente minimale sur place (minutes) que le livreur doit déclarer, avec une tentative de contact, pour être payé en cas d’échec dû au client'],

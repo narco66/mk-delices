@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Domain\Geo\Geocoder;
+use App\Domain\Geo\ZoneLocator;
 use App\Domain\Payments\GatewayRegistry;
 use App\Domain\Shared\Settings;
 use App\Http\Controllers\Controller;
@@ -21,6 +23,16 @@ class ContentController extends Controller
             'payment_methods' => $gateways->availableMethods(),
             'currency' => 'XOF',
             'timezone' => $settings->timezone(),
+            // Carte : affichée seulement si un fond de carte commercial est configuré (DEC-GEO-01).
+            'maps' => [
+                'tiles_url' => config('mkdelices.maps.tiles_url') ?: null,
+                'attribution' => config('mkdelices.maps.tiles_attribution'),
+                'geocoding' => app(Geocoder::class)->enabled(),
+                'default_center' => config('mkdelices.maps.default_center'),
+                'bounds' => config('mkdelices.maps.bounds'),
+                // Périmètre desservi (contour public : limite de la ville), affiché sur la carte du client.
+                'service_area' => app(ZoneLocator::class)->serviceArea(),
+            ],
         ]]);
     }
 
@@ -42,7 +54,7 @@ class ContentController extends Controller
     public function zones(): JsonResponse
     {
         $zones = DeliveryZone::query()->where('active', true)->orderBy('position')->orderBy('name')
-            ->get(['id', 'name', 'slug', 'description', 'districts', 'delivery_fee_xof', 'min_order_xof']);
+            ->get(['id', 'name', 'slug', 'description', 'districts', 'delivery_fee_xof', 'min_order_xof', 'area']);
 
         return response()->json(['data' => $zones]);
     }

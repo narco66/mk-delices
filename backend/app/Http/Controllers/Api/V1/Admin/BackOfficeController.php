@@ -181,10 +181,16 @@ class BackOfficeController extends Controller
     }
 
     // ---- Paramètres --------------------------------------------------------------------------
+    /** Paramètres structurés modifiés par un écran dédié (validation propre), jamais par la page générique. */
+    private const MANAGED_ELSEWHERE = ['delivery.service_area'];
+
     public function settings(): JsonResponse
     {
         $items = [];
         foreach (config('mkdelices.settings') as $key => [$group, , $public, $validation, $description]) {
+            if (in_array($key, self::MANAGED_ELSEWHERE, true)) {
+                continue;
+            }
             $items[] = ['key' => $key, 'group' => $group, 'value' => $this->settings->get($key), 'is_public' => $public, 'requires_validation' => $validation, 'description' => $description];
         }
 
@@ -230,6 +236,9 @@ class BackOfficeController extends Controller
 
     private function validateSetting(string $key, mixed $value): mixed
     {
+        if (in_array($key, self::MANAGED_ELSEWHERE, true)) {
+            throw DomainException::unprocessable('setting_managed_elsewhere', "Ce paramètre se modifie dans Opérations > Zones : {$key}");
+        }
         $rules = match ($key) {
             'business.whatsapp_number' => ['nullable', 'regex:/^[1-9]\d{7,14}$/'],
             'business.email' => ['nullable', 'email'],

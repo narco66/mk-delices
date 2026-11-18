@@ -4,6 +4,9 @@ namespace App\Providers;
 
 use App\Domain\Deliveries\Push\PushTransport;
 use App\Domain\Deliveries\Push\WebPushTransport;
+use App\Domain\Geo\Geocoder;
+use App\Domain\Geo\MapTilerGeocoder;
+use App\Domain\Geo\NullGeocoder;
 use App\Domain\Shared\Settings;
 use App\Models\User;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -25,6 +28,9 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->app->singleton(Settings::class);
         $this->app->bind(PushTransport::class, WebPushTransport::class);
+        // Fournisseur de géocodage choisi par configuration (DEC-GEO-01) ; inactif sans clé.
+        $this->app->bind(Geocoder::class, fn () => config('mkdelices.maps.geocoder') === 'maptiler' && filled(config('mkdelices.maps.geocoder_key'))
+            ? new MapTilerGeocoder : new NullGeocoder);
     }
 
     public function boot(): void
@@ -49,6 +55,8 @@ class AppServiceProvider extends ServiceProvider
         ]);
         RateLimiter::for('cart', fn (Request $r) => Limit::perMinute(60)->by($key($r)));
         RateLimiter::for('checkout', fn (Request $r) => Limit::perMinute(20)->by($key($r)));
+        // Géolocalisation : chaque appel peut coûter une requête au fournisseur cartographique.
+        RateLimiter::for('geo', fn (Request $r) => Limit::perMinute(30)->by($key($r)));
         RateLimiter::for('tracking', fn (Request $r) => Limit::perMinute(30)->by($r->ip()));
         RateLimiter::for('webhooks', fn (Request $r) => Limit::perMinute(300)->by($r->ip()));
 

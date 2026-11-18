@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { LogOut, MapPin, Package, ShieldOff, Trash2, UserRound } from 'lucide-react'
+import { LogOut, MapPin, Package, Pencil, ShieldOff, Star, Trash2, UserRound } from 'lucide-react'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { Link, useNavigate, useSearchParams } from 'react-router'
@@ -12,13 +12,14 @@ import { Card, StatusPill } from '@/components/ui/Display'
 import { EmptyState, ErrorState, errorMessage, Notice, Skeleton } from '@/components/ui/Feedback'
 import { Checkbox, Field, Input, Select } from '@/components/ui/Form'
 import { useAuth } from '@/features/auth/AuthContext'
+import { LocationPicker } from '@/features/maps/LocationPicker'
 import { useZones } from '@/hooks/usePublicData'
 import { useSeo } from '@/hooks/useSeo'
 import { api, ApiError } from '@/lib/api'
 import { cn } from '@/lib/cn'
 import { formatDateTime, formatSlot, formatXof } from '@/lib/format'
 import { InvoiceList } from '@/features/invoices/InvoiceList'
-import type { Me, Paginated, PublicOrder } from '@/types/api'
+import type { Me, Paginated, PickedLocation, PublicOrder } from '@/types/api'
 
 function homeFor(me: Me): string {
   if (me.is_staff) return '/admin'
@@ -196,7 +197,14 @@ interface Address {
   district: string
   street: string | null
   landmark: string | null
+  lat: number | null
+  lng: number | null
+  location_source: string | null
+  location_accuracy_m: number | null
+  is_default: boolean
 }
+
+const EMPTY_DRAFT = { zone_id: '', district: '', street: '', landmark: '', label: '' }
 
 export function AccountPage() {
   const { me, logout } = useAuth()
@@ -337,24 +345,64 @@ function AccountAddresses() {
   const queryClient = useQueryClient()
   const { data: zones } = useZones()
   const { data, isLoading } = useQuery({ queryKey: ['account', 'addresses'], queryFn: async () => (await api.get<{ data: Address[] }>('/account/addresses')).data })
-  const [draft, setDraft] = useState({ zone_id: '', district: '', landmark: '', label: '' })
-  const add = useMutation({
-    mutationFn: () => api.post('/account/addresses', draft),
+  const [draft, setDraft] = useState(EMPTY_DRAFT)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [location, setLocation] = useState<PickedLocation | null>(null)
+  const [zoneFromPosition, setZoneFromPosition] = useState(false)
+  // Le formulaire est remonté à chaque changement d'adresse éditée (état interne du sélecteur de position).
+  const [formKey, setFormKey] = useState(0)
+  const reset = () => {
+    setDraft(EMPTY_DRAFT)
+    setEditingId(null)
+    setLocation(null)
+    setZoneFromPosition(false)
+    setFormKey((k) => k + 1)
+  }
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ['account', 'addresses'] })
+  const save = useMutation({
+    mutationFn: () => {
+      const body = {
+        ...draft,
+        street: draft.street || null,
+        landmark: draft.landmark || null,
+        label: draft.label || null,
+        // « saved » = position déjà enregistrée et non modifiée : son origine n'est pas connue du formulaire.
+        ...(location ? { lat: location.lat, lng: location.lng, location_source: location.source === 'saved' ? null : location.source, accuracy_m: location.accuracy_m ?? null } : {}),
+      }
+      return editingId ? api.put(`/account/addresses/${editingId}`, body) : api.post('/account/addresses', body)
+    },
     onSuccess: () => {
-      setDraft({ zone_id: '', district: '', landmark: '', label: '' })
-      queryClient.invalidateQueries({ queryKey: ['account', 'addresses'] })
-      toast.success('Adresse ajoutée')
+      toast.success(editingId ? 'Adresse modifiée' : 'Adresse ajoutée')
+      reset()
+      refresh()
     },
     onError: (e) => toast.error(errorMessage(e)),
   })
   const remove = useMutation({
     mutationFn: (id: string) => api.delete(`/account/addresses/${id}`),
-    onSuccess: () => {
+    onSuccess: (_r, id) => {
       toast.success('Adresse supprimée')
-      queryClient.invalidateQueries({ queryKey: ['account', 'addresses'] })
+      if (id === editingId) reset()
+      refresh()
     },
     onError: (e) => toast.error(errorMessage(e)),
   })
+  const makeDefault = useMutation({
+    mutationFn: (id: string) => api.post(`/account/addresses/${id}/default`),
+    onSuccess: () => {
+      toast.success('Adresse par défaut enregistrée')
+      refresh()
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+  const edit = (a: Address) => {
+    setEditingId(a.id)
+    setDraft({ zone_id: a.zone_id, district: a.district, street: a.street ?? '', landmark: a.landmark ?? '', label: a.label ?? '' })
+    const source = a.location_source === 'gps' || a.location_source === 'map' || a.location_source === 'search' ? a.location_source : 'saved'
+    setLocation(a.lat !== null && a.lng !== null ? { lat: a.lat, lng: a.lng, source, accuracy_m: a.location_accuracy_m } : null)
+    setZoneFromPosition(false)
+    setFormKey((k) => k + 1)
+  }
 
   return (
     <div className="grid gap-6 lg:grid-cols-2">
@@ -362,27 +410,59 @@ function AccountAddresses() {
         {isLoading && <Skeleton className="h-24" />}
         {data?.length === 0 && <EmptyState title="Aucune adresse enregistrée" />}
         {data?.map((a) => (
-          <Card key={a.id} className="flex items-start justify-between gap-3 p-5">
+          <Card key={a.id} className={cn('flex items-start justify-between gap-3 p-5', editingId === a.id && 'ring-2 ring-caramel-400')}>
             <div>
-              <p className="font-semibold">{a.label || a.district}</p>
+              <p className="flex flex-wrap items-center gap-2 font-semibold">
+                {a.label || a.district}
+                {a.is_default && <span className="rounded-full bg-cream-100 px-2 py-0.5 text-xs font-medium text-cocoa-700">Par défaut</span>}
+              </p>
               <p className="text-sm text-cocoa-500">
-                {a.district} · {a.zone?.name}
+                {[a.street, a.district].filter(Boolean).join(', ')} · {a.zone?.name}
               </p>
               {a.landmark && <p className="text-sm text-cocoa-500">{a.landmark}</p>}
+              {a.lat !== null ? (
+                <p className="mt-1 flex items-center gap-1 text-xs text-success-600">
+                  <MapPin className="size-3" aria-hidden /> Position enregistrée
+                </p>
+              ) : (
+                <p className="mt-1 text-xs text-cocoa-500">Sans position (le livreur se fie au repère)</p>
+              )}
+              {!a.is_default && (
+                <button type="button" className="mt-2 flex items-center gap-1 text-sm text-raspberry-600 hover:underline" onClick={() => makeDefault.mutate(a.id)} disabled={makeDefault.isPending}>
+                  <Star className="size-3.5" aria-hidden /> Définir par défaut
+                </button>
+              )}
             </div>
-            <button type="button" onClick={() => window.confirm(`Supprimer l'adresse « ${a.label ?? a.district} » ?`) && remove.mutate(a.id)} disabled={remove.isPending} className="grid size-10 place-items-center rounded-full text-cocoa-400 hover:bg-error-50 hover:text-error-600" aria-label="Supprimer l'adresse">
-              <Trash2 className="size-4" />
-            </button>
+            <div className="flex">
+              <button type="button" onClick={() => edit(a)} className="grid size-10 place-items-center rounded-full text-cocoa-400 hover:bg-cream-100 hover:text-cocoa-700" aria-label={`Modifier l'adresse « ${a.label ?? a.district} »`}>
+                <Pencil className="size-4" />
+              </button>
+              <button type="button" onClick={() => window.confirm(`Supprimer l'adresse « ${a.label ?? a.district} » ?`) && remove.mutate(a.id)} disabled={remove.isPending} className="grid size-10 place-items-center rounded-full text-cocoa-400 hover:bg-error-50 hover:text-error-600" aria-label={`Supprimer l'adresse « ${a.label ?? a.district} »`}>
+                <Trash2 className="size-4" />
+              </button>
+            </div>
           </Card>
         ))}
       </div>
-      <Card className="p-6">
-        <h2 className="mb-4 font-semibold">Nouvelle adresse</h2>
+      <Card className="p-6" key={formKey}>
+        <h2 className="mb-4 font-semibold">{editingId ? "Modifier l'adresse" : 'Nouvelle adresse'}</h2>
         <div className="grid gap-4">
           <Field label="Nom (ex. Maison, Bureau)">{(p) => <Input {...p} value={draft.label} onChange={(e) => setDraft({ ...draft, label: e.target.value })} />}</Field>
-          <Field label="Zone" required>
+          <LocationPicker
+            value={location}
+            zoneId={draft.zone_id}
+            zones={zones}
+            onChange={(loc, res) => {
+              setLocation(loc)
+              const fromPosition = !!loc && !!res?.zone && res.zone_source === 'position'
+              setZoneFromPosition(fromPosition)
+              if (fromPosition) setDraft((d) => ({ ...d, zone_id: res!.zone!.id }))
+            }}
+            onSuggestion={(place) => setDraft((d) => ({ ...d, district: d.district || place.district || '', street: d.street || place.street || '' }))}
+          />
+          <Field label="Zone" required hint={zoneFromPosition ? 'Déterminée par la position.' : location ? 'Vérifiée avec la position à l’enregistrement.' : undefined}>
             {(p) => (
-              <Select {...p} value={draft.zone_id} onChange={(e) => setDraft({ ...draft, zone_id: e.target.value })}>
+              <Select {...p} value={draft.zone_id} disabled={zoneFromPosition} onChange={(e) => setDraft({ ...draft, zone_id: e.target.value })}>
                 <option value="">Choisir…</option>
                 {zones?.map((z) => (
                   <option key={z.id} value={z.id}>
@@ -393,10 +473,18 @@ function AccountAddresses() {
             )}
           </Field>
           <Field label="Quartier" required>{(p) => <Input {...p} value={draft.district} onChange={(e) => setDraft({ ...draft, district: e.target.value })} />}</Field>
+          <Field label="Rue / villa">{(p) => <Input {...p} value={draft.street} onChange={(e) => setDraft({ ...draft, street: e.target.value })} />}</Field>
           <Field label="Point de repère">{(p) => <Input {...p} value={draft.landmark} onChange={(e) => setDraft({ ...draft, landmark: e.target.value })} />}</Field>
-          <Button onClick={() => add.mutate()} loading={add.isPending} disabled={!draft.zone_id || draft.district.length < 2}>
-            Ajouter
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={() => save.mutate()} loading={save.isPending} disabled={!draft.zone_id || draft.district.length < 2}>
+              {editingId ? 'Enregistrer' : 'Ajouter'}
+            </Button>
+            {editingId && (
+              <Button variant="ghost" onClick={reset}>
+                Annuler
+              </Button>
+            )}
+          </div>
         </div>
       </Card>
     </div>

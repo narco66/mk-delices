@@ -39,9 +39,19 @@ Après toute modification : `php artisan config:cache`.
 
 **État au 18/11/2026 (préproduction).** La clé fournie par MK Délices est en place dans `MAPS_TILES_URL`. MK Délices a ajouté `srv2163043.hstgr.cloud` aux origines autorisées, et la carte s'affiche : tuiles en 200, attribution présente, aucune erreur CSP. Contrôle fait dans Edge en format mobile sur `/commander`. Le domaine de production devra être ajouté de la même façon.
 
-Une clé restreinte par origine ne peut pas servir au géocodage côté serveur (requêtes sans origine). Il faut une seconde clé sans restriction dans `MAPS_GEOCODER_KEY`, avec `MAPS_GEOCODER=maptiler`.
+**Géocodage activé le 18/11/2026** (`MAPS_GEOCODER=maptiler`). MK Délices a levé la restriction d'origine de sa clé, qui sert donc aussi au serveur.
 
-La clé est visible dans le navigateur : c'est le principe d'une clé de tuiles, protégée par la restriction d'origine. Elle a aussi été transmise en clair dans une conversation ; la régénérer dans le compte si besoin, puis mettre à jour le `.env`.
+Format réel constaté à Dakar, pris en compte depuis `454b4ee` :
+- quartier au niveau `place` (« Mermoz », « Ouakam »), sinon la commune, dont on retire « Commune de » (« Dakar-Plateau ») ;
+- certaines voies (« Rue PA-… ») apparaissent au niveau `place` et sont écartées.
+
+Vérifié dans le navigateur : la recherche « Sacré Coeur 3 » remplit le quartier et la rue.
+
+**Recommandé.** Une clé non restreinte peut être réutilisée par quiconque la lit dans la page, ce qui consomme le quota de MK Délices. Il vaut mieux :
+- créer une **clé serveur distincte**, à placer dans `MAPS_GEOCODER_KEY` ;
+- restreindre de nouveau la clé des tuiles au domaine du site.
+
+La clé a aussi été transmise en clair dans une conversation : la régénérer à cette occasion, puis mettre à jour le `.env` du serveur.
 
 **Interdit en production :** les serveurs publics `tile.openstreetmap.org` et `nominatim.openstreetmap.org`. Leurs politiques d'usage l'excluent.
 

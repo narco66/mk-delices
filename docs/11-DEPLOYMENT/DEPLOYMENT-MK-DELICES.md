@@ -105,6 +105,12 @@ Sauvegardes chiffrées de PostgreSQL au moins quotidiennes, copie hors serveur, 
 
 MFA administrateurs si possible, SSH clés, pare-feu restrictif, mises à jour sécurité, logs centralisés, revue trimestrielle des comptes, rotations de secrets et examen périodique des autorisations livreurs. Ne pas conserver les données client dans logs de proxy ni exports non protégés. Tester effectivement restauration, certificats et rotation de clé PSP.
 
+**Durcissement du serveur appliqué en préproduction le 18/11/2026, à reproduire sur la production** (audit `AUDIT-SECURITE-2026-11-18.md`) :
+- `/etc/ssh/sshd_config.d/00-mk-hardening.conf` : `PasswordAuthentication no`, `KbdInteractiveAuthentication no`, `PermitRootLogin prohibit-password`, `X11Forwarding no`, `MaxAuthTries 3`. Le préfixe `00-` est indispensable : le premier fichier lu l'emporte, et `50-cloud-init.conf` réactive sinon les mots de passe.
+- Avant `systemctl reload ssh`, programmer une annulation automatique (`systemd-run --on-active=300 …`), tester une **nouvelle** connexion par clé, puis annuler l'annulation.
+- fail2ban, avec `/etc/fail2ban/jail.d/mk-delices.local` : `[sshd]`, `backend = systemd`, 5 échecs en 10 min → bannissement d'1 h.
+- `server_tokens off;` dans `/etc/nginx/nginx.conf`.
+
 ## 7. Runbooks incidents
 
 | Incident | Diagnostic | Remédiation |

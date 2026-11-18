@@ -79,7 +79,8 @@ En gras : tests ajoutés par cet audit.
 
 | Élément | Raison | Comment le vérifier |
 |---|---|---|
-| Fond de carte réel, éditeur de contour à la souris | Aucune clé de tuiles fournie | Après configuration (07 § 2.5), contrôle manuel en préproduction |
+| Fond de carte réel | **Vérifié le 18/11/2026** en préproduction (Edge, 360 px) : 5 tuiles chargées (200), attribution, repère GPS, aucune erreur CSP | — |
+| Éditeur de contour à la souris (back-office) | Non vérifié dans le navigateur réel (session administrateur nécessaire) | Ouvrir Opérations > Zones > Périmètre desservi en préproduction |
 | Géocodage MapTiler réel | Aucune clé ; seules des réponses simulées (`Http::fake`) au format documenté ont été testées | 07 § 2.3 |
 | GPS de vrais téléphones à Dakar | Position simulée par Playwright | Campagne terrain (04, actions restantes) |
 | Préproduction | Rien n'est déployé ni commité | Après accord, rejouer les E2E sur la préproduction |

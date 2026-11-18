@@ -37,7 +37,7 @@ Après toute modification : `php artisan config:cache`.
    - autre fournisseur : remplacer ce domaine.
 5. Contrôle : ouvrir `/commander`, puis « Choisir sur la carte ». Les tuiles s'affichent, sans erreur CSP dans la console du navigateur.
 
-**État au 18/11/2026 (préproduction).** La clé fournie par MK Délices est en place dans `MAPS_TILES_URL`. Elle n'autorise pour l'instant que `localhost` : MapTiler répond 403 pour `https://srv2163043.hstgr.cloud`, et la carte reste grise tant que ce domaine n'est pas ajouté aux origines autorisées.
+**État au 18/11/2026 (préproduction).** La clé fournie par MK Délices est en place dans `MAPS_TILES_URL`. MK Délices a ajouté `srv2163043.hstgr.cloud` aux origines autorisées, et la carte s'affiche : tuiles en 200, attribution présente, aucune erreur CSP. Contrôle fait dans Edge en format mobile sur `/commander`. Le domaine de production devra être ajouté de la même façon.
 
 Une clé restreinte par origine ne peut pas servir au géocodage côté serveur (requêtes sans origine). Il faut une seconde clé sans restriction dans `MAPS_GEOCODER_KEY`, avec `MAPS_GEOCODER=maptiler`.
 

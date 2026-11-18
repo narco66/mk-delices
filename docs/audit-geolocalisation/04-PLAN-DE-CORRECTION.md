@@ -30,7 +30,7 @@ Priorités :
 | Décision de MK Délices | Mise en œuvre | État |
 |---|---|---|
 | Commiter et déployer | Commits `f8c784c`, `1171672`, `89b138e` sur `main` (CI verte). Préproduction déployée le 18/11/2026 avec sauvegarde préalable : migration, snippet nginx, `.env`, périmètre chargé | ✅ |
-| Compte MapTiler ouvert | Clé reçue et configurée pour les tuiles (`.env` du serveur uniquement). **Bloquant :** la clé n'autorise pas encore l'origine `https://srv2163043.hstgr.cloud` (réponse 403). Le géocodage reste désactivé faute de clé serveur | ⏳ |
+| Compte MapTiler ouvert | Clé configurée (`.env` du serveur uniquement), origine de la préproduction autorisée : **carte opérationnelle** (vérifiée dans le navigateur). Le géocodage reste désactivé faute de clé serveur | ✅ carte · ⏳ recherche |
 | « Nous débutons avec la ville de Dakar » | **Périmètre desservi** = limite administrative de la ville de Dakar (OSM), partie continentale ; écran d'édition dans Zones | ✅ |
 | Durée de conservation « selon les meilleures pratiques » | **90 jours** après le créneau (voir 07 § 4) | ✅ |
 | Installer Laravel Boost | `laravel/boost` en dépendance de développement, lignes directrices, skills et serveur MCP | ✅ |
@@ -39,7 +39,7 @@ Priorités :
 
 | Action | Priorité | Responsable | Dépendance | Effort |
 |---|---|---|---|---|
-| Dans MapTiler (Account > Keys) : ajouter `srv2163043.hstgr.cloud` (et plus tard le domaine de production) aux origines autorisées de la clé existante ; créer une **seconde clé, sans restriction d'origine**, pour le serveur (géocodage) | P1 | MK Délices | Compte ouvert | 10 min |
+| Dans MapTiler : créer une **seconde clé, sans restriction d'origine**, pour le serveur (géocodage), et l'envoyer ; au lancement, ajouter le domaine de production aux origines de la clé actuelle | P1 | MK Délices | — | 5 min |
 | Vérifier le format réel des réponses de géocodage sur le compte (quartiers de Dakar) et ajuster `MapTilerGeocoder::DISTRICT_LEVELS` | P1 | Équipe technique | Compte | 2 h |
 | Dessiner, si souhaité, les contours des **4 zones tarifaires** à l'intérieur de Dakar (sinon le client choisit sa zone, contrôlée par le commercial) | P2 | MK Délices (livraisons) | Fond de carte | 1 à 2 h |
 | Valider puis publier la mention « géolocalisation » de la politique de confidentialité : projet prêt en [annexe A2](annexes/A2-PROJET-MENTION-CONFIDENTIALITE.md) | P2 | Conseil juridique | — | — |

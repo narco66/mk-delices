@@ -117,6 +117,8 @@ MFA administrateurs si possible, SSH clés, pare-feu restrictif, mises à jour s
 
 ## 8. Maintenance et passation
 
+Procédures concrètes (déploiement, maintenance bloquée, `/health`, sauvegardes, restauration, secrets, incidents) : **`RUNBOOK-EXPLOITATION.md`**. Conditions d'ouverture au public : **`GO-NO-GO-PRODUCTION.md`**. Formation des équipes : **`../guides/PLAN-DE-FORMATION.md`**.
+
 Documenter comptes techniques sans leurs secrets, topologie, procédures de sauvegarde/restauration, contacts PSP et fournisseurs, index APIs, guide admin, guide préparateur, guide livreur et calendrier mises à jour. Revue opérationnelle 30 jours après lancement sur performance, incidents et retours clients.
 
 ## Références et réserves

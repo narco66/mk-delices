@@ -70,9 +70,11 @@ echo "7/9 Caches et permissions"
 "${artisan[@]}" optimize                  # config, routes, vues, événements
 "${artisan[@]}" storage:link 2>/dev/null || true
 # PHP-FPM et le worker (www-data) doivent pouvoir écrire, quel que soit l'utilisateur qui déploie.
-chgrp -R www-data backend/storage backend/bootstrap/cache
-chmod -R g+rwX backend/storage backend/bootstrap/cache
-find backend/storage backend/bootstrap/cache -type d -exec chmod g+s {} +
+# Seuls les fichiers de l'utilisateur qui déploie sont modifiés : ceux créés par PHP (www-data, ex. polices
+# du générateur PDF) appartiennent déjà au groupe www-data, et chgrp sur eux échouerait (incident du 17/11/2026).
+me="$(id -un)"
+find backend/storage backend/bootstrap/cache -user "$me" -exec chgrp www-data {} + -exec chmod g+rwX {} +
+find backend/storage backend/bootstrap/cache -type d -user "$me" -exec chmod g+s {} +
 
 echo "8/9 Redémarrage des workers et remise en ligne"
 "${artisan[@]}" queue:restart

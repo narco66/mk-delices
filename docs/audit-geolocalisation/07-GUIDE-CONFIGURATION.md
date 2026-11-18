@@ -37,6 +37,12 @@ Après toute modification : `php artisan config:cache`.
    - autre fournisseur : remplacer ce domaine.
 5. Contrôle : ouvrir `/commander`, puis « Choisir sur la carte ». Les tuiles s'affichent, sans erreur CSP dans la console du navigateur.
 
+**État au 18/11/2026 (préproduction).** La clé fournie par MK Délices est en place dans `MAPS_TILES_URL`. Elle n'autorise pour l'instant que `localhost` : MapTiler répond 403 pour `https://srv2163043.hstgr.cloud`, et la carte reste grise tant que ce domaine n'est pas ajouté aux origines autorisées.
+
+Une clé restreinte par origine ne peut pas servir au géocodage côté serveur (requêtes sans origine). Il faut une seconde clé sans restriction dans `MAPS_GEOCODER_KEY`, avec `MAPS_GEOCODER=maptiler`.
+
+La clé est visible dans le navigateur : c'est le principe d'une clé de tuiles, protégée par la restriction d'origine. Elle a aussi été transmise en clair dans une conversation ; la régénérer dans le compte si besoin, puis mettre à jour le `.env`.
+
 **Interdit en production :** les serveurs publics `tile.openstreetmap.org` et `nominatim.openstreetmap.org`. Leurs politiques d'usage l'excluent.
 
 ## 3. Contours des zones

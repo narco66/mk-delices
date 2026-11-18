@@ -29,8 +29,8 @@ Priorités :
 
 | Décision de MK Délices | Mise en œuvre | État |
 |---|---|---|
-| Commiter et déployer | Commits sur `main`, déploiement en préproduction | ✅ (voir 05 § 6) |
-| Compte MapTiler ouvert | Clés API à transmettre par MK Délices (non communiquées) | ⏳ |
+| Commiter et déployer | Commits `f8c784c`, `1171672`, `89b138e` sur `main` (CI verte). Préproduction déployée le 18/11/2026 avec sauvegarde préalable : migration, snippet nginx, `.env`, périmètre chargé | ✅ |
+| Compte MapTiler ouvert | Clé reçue et configurée pour les tuiles (`.env` du serveur uniquement). **Bloquant :** la clé n'autorise pas encore l'origine `https://srv2163043.hstgr.cloud` (réponse 403). Le géocodage reste désactivé faute de clé serveur | ⏳ |
 | « Nous débutons avec la ville de Dakar » | **Périmètre desservi** = limite administrative de la ville de Dakar (OSM), partie continentale ; écran d'édition dans Zones | ✅ |
 | Durée de conservation « selon les meilleures pratiques » | **90 jours** après le créneau (voir 07 § 4) | ✅ |
 | Installer Laravel Boost | `laravel/boost` en dépendance de développement, lignes directrices, skills et serveur MCP | ✅ |
@@ -39,7 +39,7 @@ Priorités :
 
 | Action | Priorité | Responsable | Dépendance | Effort |
 |---|---|---|---|---|
-| Créer dans le compte MapTiler une clé « navigateur » restreinte au domaine et une clé serveur, et les transmettre de façon sécurisée (jamais par email en clair ni dans Git) | P1 | MK Délices | Compte ouvert | 15 min |
+| Dans MapTiler (Account > Keys) : ajouter `srv2163043.hstgr.cloud` (et plus tard le domaine de production) aux origines autorisées de la clé existante ; créer une **seconde clé, sans restriction d'origine**, pour le serveur (géocodage) | P1 | MK Délices | Compte ouvert | 10 min |
 | Vérifier le format réel des réponses de géocodage sur le compte (quartiers de Dakar) et ajuster `MapTilerGeocoder::DISTRICT_LEVELS` | P1 | Équipe technique | Compte | 2 h |
 | Dessiner, si souhaité, les contours des **4 zones tarifaires** à l'intérieur de Dakar (sinon le client choisit sa zone, contrôlée par le commercial) | P2 | MK Délices (livraisons) | Fond de carte | 1 à 2 h |
 | Mentionner la position dans la politique de confidentialité (finalité, durée, destinataires : livreur et fournisseur de tuiles) | P2 | Conseil juridique | — | — |

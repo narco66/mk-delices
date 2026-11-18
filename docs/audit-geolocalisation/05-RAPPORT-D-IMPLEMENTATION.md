@@ -107,4 +107,22 @@ Deux changements de comportement :
 - Backend : `test_service_area_of_dakar_refuses_positions_outside_the_city`, `test_service_area_is_managed_by_zone_managers_only`. Le test de purge vérifie la valeur de 90 jours et la conservation d'une livraison récente.
 - Vitest : « explique une position hors du périmètre desservi ».
 
-**Mise en préproduction** : le périmètre est chargé par `mk:set-service-area`, exécuté après le déploiement.
+**Mise en préproduction (18/11/2026), vérifiée :**
+- Déploiement de `89b138e` avec sauvegarde chiffrée préalable. Le `deploy.sh` du commit déployé a été exécuté (correctif `chgrp`).
+- Migration `2026_11_18_090000` jouée.
+- Snippet nginx installé ; `nginx -t` réussi, puis rechargement.
+- `.env` (copie de sauvegarde dans `/root`) : `MAPS_TILES_URL`, attribution, `MAPS_GEOCODER=none`, `MAPS_POSITION_RETENTION_DAYS=90`.
+- `mk:set-service-area database/data/ville-de-dakar.geojson`.
+
+| Contrôle | Résultat |
+|---|---|
+| `/health`, accueil | 200 |
+| `/api/v1/config` | tuiles configurées, périmètre présent, géocodage désactivé |
+| `/geo/resolve` | Mermoz et Parcelles Assainies livrables ; Pikine et Gorée hors périmètre |
+| CSP | `img-src` contient `https://api.maptiler.com` |
+| Purge | `--dry-run` : 0 commande ; planifiée à 03:35 |
+| Tuile MapTiler avec l'origine du site | **403** : origine à autoriser dans le compte MapTiler |
+
+Le test de fumée du script (étape 9/9) a renvoyé 401, faute de `SMOKE_AUTH` (préproduction protégée par mot de passe). Les mêmes contrôles ont été refaits à la main avec les identifiants du serveur.
+
+À l'avenir, lancer le script avec `SMOKE_AUTH="mkdelices:$(cat /etc/mk-delices/staging_access_password)"`.

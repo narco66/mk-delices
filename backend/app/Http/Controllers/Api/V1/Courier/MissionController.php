@@ -21,7 +21,7 @@ class MissionController extends Controller
     public function index(Request $request, Settings $settings): JsonResponse
     {
         $partner = $this->partner($request);
-        $base = DeliveryAssignment::query()->where('partner_id', $partner->id)->with(['order.items.product:id,requires_cold_chain']);
+        $base = DeliveryAssignment::query()->forRealOrders()->where('partner_id', $partner->id)->with(['order.items.product:id,requires_cold_chain']);
 
         return response()->json(['data' => [
             'partner' => ['display_name' => $partner->display_name, 'available' => $partner->available],

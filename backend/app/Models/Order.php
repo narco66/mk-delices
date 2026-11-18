@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Domain\Deliveries\AssignmentStatus;
 use App\Domain\Orders\OrderPaymentStatus;
 use App\Domain\Orders\OrderStatus;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -108,6 +109,15 @@ class Order extends Model
     public function assignments(): HasMany
     {
         return $this->hasMany(DeliveryAssignment::class)->orderBy('assigned_at');
+    }
+
+    /**
+     * Commandes réelles uniquement : les commandes de test (E2E, anciennes générations de démonstration archivées)
+     * n'apparaissent dans aucun écran opérationnel. En production, aucune commande n'est jamais de test.
+     */
+    public function scopeNotTest(Builder $query): Builder
+    {
+        return $query->where($query->qualifyColumn('is_test'), false);
     }
 
     public function activeAssignment(): HasOne

@@ -77,6 +77,7 @@ class BackOfficeController extends Controller
     public function reviews(Request $request): JsonResponse
     {
         $reviews = Review::query()->with(['product:id,name', 'order:id,reference'])
+            ->where(fn ($r) => $r->whereNull('order_id')->orWhereHas('order', fn ($o) => $o->notTest()))
             ->when($request->input('status'), fn ($q, $s) => $q->where('moderation_status', $s))
             ->latest()->paginate(30);
 

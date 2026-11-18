@@ -221,7 +221,7 @@ class DeliveryService
         if ($minutes <= 0) {
             return 0;
         }
-        $stale = DeliveryAssignment::query()->with(['order', 'partner'])
+        $stale = DeliveryAssignment::query()->forRealOrders()->with(['order', 'partner'])
             ->where('status', AssignmentStatus::Proposed->value)
             ->where('assigned_at', '<', now()->subMinutes($minutes))->get();
         $sent = 0;

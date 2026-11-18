@@ -123,6 +123,21 @@ class CheckoutTest extends TestCase
             ->assertStatus(409)->assertJsonPath('error.code', 'slot_unavailable')->assertJsonStructure(['error' => ['details' => ['next_slot' => ['start_at']]]]);
     }
 
+    public function test_test_orders_never_use_slot_capacity(): void
+    {
+        app(Settings::class)->set('ordering.slot_capacity', 1);
+        $zone = $this->zone();
+        $variant = $this->variant();
+        $cartA = $this->cartWith($variant, 1);
+        $slot = $this->firstSlot($cartA);
+        $ref = $this->postJson('/api/v1/checkout/orders', $this->orderPayload($zone, $slot), $this->cartHeaders(...$cartA) + ['Idempotency-Key' => 'slot-t-0001'])->assertCreated()->json('data.reference');
+        // Commande de test (E2E, démonstration archivée) : la place redevient disponible pour un vrai client.
+        Order::query()->where('reference', $ref)->update(['is_test' => true]);
+
+        $cartB = $this->cartWith($variant, 1);
+        $this->postJson('/api/v1/checkout/orders', $this->orderPayload($zone, $slot), $this->cartHeaders(...$cartB) + ['Idempotency-Key' => 'slot-t-0002'])->assertCreated();
+    }
+
     public function test_last_unit_can_only_be_reserved_once(): void
     {
         $variant = $this->variant(['stock_qty' => 1]);

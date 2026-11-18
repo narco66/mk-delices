@@ -18,7 +18,7 @@ class PreparationController extends Controller
     public function index(Request $request, OrderStateMachine $machine, Settings $settings): JsonResponse
     {
         $request->validate(['date' => ['nullable', 'date']]);
-        $orders = Order::query()
+        $orders = Order::query()->notTest()
             ->whereIn('status', ['accepted', 'preparing', 'ready'])
             ->when($request->input('date'), fn ($q, $d) => $q->whereRaw("(slot_start_at AT TIME ZONE 'Africa/Dakar')::date = ?", [$d]))
             ->with(['items.product:id,requires_cold_chain,shelf_life_hours'])

@@ -63,7 +63,9 @@ class CatalogController extends Controller
     {
         $product = Product::query()->publiclyVisible()->where('slug', $slug)
             ->with(['category', 'variants', 'images', 'related' => fn ($q) => $q->publiclyVisible()->with(['variants', 'images', 'category']),
-                'reviews' => fn ($q) => $q->where('moderation_status', 'approved')->latest()])
+                // Avis des commandes de test (démonstration archivée) jamais publiés.
+                'reviews' => fn ($q) => $q->where('moderation_status', 'approved')
+                    ->where(fn ($r) => $r->whereNull('order_id')->orWhereHas('order', fn ($o) => $o->notTest()))->latest()])
             ->firstOrFail();
 
         return new ProductResource($product);

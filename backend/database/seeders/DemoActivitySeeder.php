@@ -4,6 +4,9 @@ namespace Database\Seeders;
 
 use App\Domain\Cart\CartService;
 use App\Domain\Deliveries\DeliveryService;
+use App\Domain\Geo\GeoPoint;
+use App\Domain\Geo\ZoneArea;
+use App\Domain\Geo\ZoneLocator;
 use App\Domain\Orders\CheckoutService;
 use App\Domain\Orders\OrderStateMachine;
 use App\Domain\Orders\SlotService;
@@ -35,7 +38,11 @@ use RuntimeException;
  * les états : clients (invités et comptes), commandes, paiements (prestataire simulé), préparation,
  * missions de livraison, incidents, remboursements, avis, règlements livreurs, brouillons WhatsApp.
  * Toutes les données sont fictives : clients is_demo, numéros 70 000 00 xx, emails en .invalid.
- * Reproductible (graine fixe) et exécutable une seule fois.
+ * Reproductible (graine fixe). Exécutée une fois par génération : `php artisan mk:demo-refresh` archive la
+ * génération précédente (commandes passées en « test », jamais supprimées) puis en produit une nouvelle, datée du jour.
+ *
+ * Géolocalisation : quartiers réels des zones avec des positions APPROXIMATIVES (centres de quartier ± 300 m),
+ * toujours dans le périmètre desservi ; mélange GPS / carte / adresse enregistrée / saisie sans position.
  *
  * Prérequis : rôles, catalogue publié, zones (LaunchConfigurationSeeder) et comptes de démonstration (DemoDataSeeder).
  */
@@ -48,6 +55,27 @@ class DemoActivitySeeder extends Seeder
     private const FIRST_NAMES = ['Awa', 'Moussa', 'Fatou', 'Ibrahima', 'Aminata', 'Cheikh', 'Khady', 'Ousmane', 'Mariama', 'Babacar', 'Ndeye', 'Aliou', 'Coumba', 'Mamadou', 'Rokhaya', 'Lamine'];
 
     private const LAST_NAMES = ['Diop', 'Ndiaye', 'Sow', 'Fall', 'Ba', 'Sy', 'Diallo', 'Gueye', 'Cissé', 'Mbaye', 'Faye', 'Sarr', 'Kane', 'Thiam', 'Seck', 'Niang'];
+
+    /**
+     * Quartiers de Dakar et position approximative de leur centre (lat, lng) — données fictives de démonstration,
+     * rattachées aux zones dont la liste de quartiers (districts) contient le nom.
+     */
+    private const DISTRICTS = [
+        ['Plateau', 14.6680, -17.4370], ['Médina', 14.6830, -17.4500], ['Fann', 14.6930, -17.4630], ['Point E', 14.6990, -17.4580],
+        ['Gueule Tapée', 14.6870, -17.4590], ['Fass', 14.6850, -17.4470],
+        ['Mermoz', 14.7106, -17.4747], ['Sacré-Cœur', 14.7210, -17.4680], ['Liberté', 14.7250, -17.4610], ['Sicap', 14.7170, -17.4590],
+        ['HLM', 14.7100, -17.4450], ['Grand Dakar', 14.7020, -17.4500], ['Amitié', 14.7060, -17.4600],
+        ['Ouakam', 14.7240, -17.4920], ['Ngor', 14.7470, -17.5130], ['Almadies', 14.7440, -17.5230], ['Mamelles', 14.7290, -17.5030],
+        ['Yoff', 14.7560, -17.4700], ['Ouest-Foire', 14.7440, -17.4780],
+        ['Parcelles Assainies', 14.7650, -17.4400], ['Grand Yoff', 14.7350, -17.4550], ["Patte d'Oie", 14.7480, -17.4500], ['Cambérène', 14.7640, -17.4330],
+    ];
+
+    private const STREETS = ['Rue 10', 'Avenue Cheikh Anta Diop', 'Rue Carnot', 'Villa 112', 'Cité Keur Gorgui, villa 24', 'Rue MZ 45', null, null];
+
+    /** @var array<string, list<array{0: string, 1: float, 2: float}>> quartiers par zone (id) */
+    private array $districtsByZone = [];
+
+    private ?array $serviceArea = null;
 
     private const LANDMARKS = ['Près de la pharmacie', 'Portail bleu', 'Derrière la mosquée', 'Immeuble beige, 2e étage', 'À côté de la boulangerie', 'Face à l\'école'];
 
@@ -81,9 +109,12 @@ class DemoActivitySeeder extends Seeder
         if (! app()->environment(['local', 'testing', 'staging'])) {
             throw new RuntimeException('Les données de démonstration sont interdites hors environnements local/testing/staging.');
         }
-        // Rejouable sans doublon : on ne s'arrête que si une génération est allée À SON TERME (journal d'audit).
-        if (AuditLog::query()->where('action', 'demo.activity_generated')->exists()) {
-            $this->command?->warn('Activité de démonstration déjà présente : rien à faire.');
+        // Rejouable sans doublon : on ne s'arrête que si une génération est allée À SON TERME (journal d'audit)
+        // et n'a pas été archivée depuis (mk:demo-refresh).
+        $generated = AuditLog::query()->where('action', 'demo.activity_generated')->latest('created_at')->value('created_at');
+        $archived = AuditLog::query()->where('action', 'demo.activity_archived')->latest('created_at')->value('created_at');
+        if ($generated && (! $archived || $generated > $archived)) {
+            $this->command?->warn('Activité de démonstration déjà présente : rien à faire (mk:demo-refresh pour la renouveler).');
 
             return;
         }
@@ -139,6 +170,13 @@ class DemoActivitySeeder extends Seeder
         if (! $this->zones || ! $this->variants || ! $this->partners) {
             throw new RuntimeException('Zones actives, catalogue publié et livreurs actifs requis (LaunchConfigurationSeeder + import du catalogue).');
         }
+        // Quartiers de chaque zone, limités au périmètre desservi s'il est défini (ex. ville de Dakar).
+        $this->serviceArea = app(ZoneLocator::class)->serviceArea();
+        foreach ($this->zones as $zone) {
+            $text = mb_strtolower((string) $zone->districts);
+            $this->districtsByZone[$zone->id] = array_values(array_filter(self::DISTRICTS, fn ($d) => str_contains($text, mb_strtolower($d[0]))
+                && $this->inServiceArea($d[1], $d[2])));
+        }
         // Chaque livreur de démonstration couvre toutes les zones actives.
         foreach ($this->partners as $partner) {
             $partner->zones()->syncWithoutDetaching(array_map(fn ($z) => $z->id, $this->zones));
@@ -161,16 +199,64 @@ class DemoActivitySeeder extends Seeder
                 'marketing_consent_at' => $n === 1 ? now() : null, 'is_demo' => true,
                 'preferences' => ['favorite_flavors' => ['Classique', 'Spéculoos']],
             ]);
-            if (! $customer->addresses()->exists()) {
-                Address::query()->create([
-                    'customer_id' => $customer->id, 'zone_id' => $this->zones[$n % count($this->zones)]->id, 'label' => 'Maison',
-                    'district' => 'Quartier de démonstration', 'landmark' => self::LANDMARKS[$n], 'is_default' => true,
-                ]);
-            }
+            $this->clientAddresses($customer, $n);
             $clients[] = $user->fresh('customer');
         }
 
         return $clients;
+    }
+
+    /**
+     * Carnet d'adresses des comptes de démonstration (mis à jour à chaque génération, par libellé) :
+     * client 1 = Maison (GPS, par défaut) + Bureau (sans position) ; client 2 = Maison (carte) ; client 3 = Maison sans position.
+     */
+    private function clientAddresses(Customer $customer, int $n): void
+    {
+        $zone = $this->zones[$n % count($this->zones)];
+        $spot = $this->spot($zone, $n);
+        $plans = [['Maison', true, $n === 3 ? null : ($n === 1 ? 'gps' : 'map'), $spot]];
+        if ($n === 1) {
+            $office = $this->zones[0];
+            $plans[] = ['Bureau', false, null, $this->spot($office, 0)];
+        }
+        // Anciennes adresses de démonstration remplacées (données fictives des comptes .test uniquement).
+        $customer->addresses()->where('district', 'Quartier de démonstration')->delete();
+        foreach ($plans as [$label, $default, $source, $place]) {
+            $zoneId = $label === 'Bureau' ? $this->zones[0]->id : $zone->id;
+            Address::query()->updateOrCreate(['customer_id' => $customer->id, 'label' => $label], [
+                'zone_id' => $zoneId, 'district' => $place['district'], 'street' => self::STREETS[$n % count(self::STREETS)],
+                'landmark' => self::LANDMARKS[$n], 'is_default' => $default,
+                'lat' => $source && $place['lat'] !== null ? $place['lat'] : null, 'lng' => $source && $place['lng'] !== null ? $place['lng'] : null,
+                'location_source' => $source && $place['lat'] !== null ? $source : null,
+                'location_accuracy_m' => $source === 'gps' && $place['lat'] !== null ? 12 : null,
+            ]);
+        }
+    }
+
+    /**
+     * Quartier réel de la zone et position approximative (centre ± ~300 m), dans le périmètre desservi.
+     *
+     * @return array{district: string, lat: ?float, lng: ?float}
+     */
+    private function spot(DeliveryZone $zone, ?int $index = null): array
+    {
+        $candidates = $this->districtsByZone[$zone->id] ?? [];
+        if ($candidates === []) {
+            return ['district' => 'Quartier de démonstration', 'lat' => null, 'lng' => null];
+        }
+        [$name, $lat, $lng] = $candidates[$index !== null ? $index % count($candidates) : mt_rand(0, count($candidates) - 1)];
+        $lat = round($lat + mt_rand(-27, 27) / 10000, 6);
+        $lng = round($lng + mt_rand(-27, 27) / 10000, 6);
+        if (! $this->inServiceArea($lat, $lng)) {
+            [, $lat, $lng] = $candidates[$index !== null ? $index % count($candidates) : 0];
+        }
+
+        return ['district' => $name, 'lat' => $lat, 'lng' => $lng];
+    }
+
+    private function inServiceArea(float $lat, float $lng): bool
+    {
+        return $this->serviceArea === null || ZoneArea::contains($this->serviceArea, new GeoPoint($lat, $lng));
     }
 
     /** Commande passée puis menée jusqu'à son état final, avec horodatages cohérents. */
@@ -234,6 +320,13 @@ class DemoActivitySeeder extends Seeder
                 continue;
             }
             if ($step === 'pending_unpaid') {
+                $snapshot = $order->address_snapshot ?? [];
+                $this->travel($at->addMinutes(5));
+                app(CheckoutService::class)->updateDetails($order, ['delivery' => [
+                    'zone_id' => $order->zone_id, 'district' => $snapshot['district'] ?? 'Quartier de démonstration',
+                    'street' => $snapshot['street'] ?? null, 'landmark' => 'Repère précisé au téléphone par le client (démo)',
+                ]], $this->commercial);
+
                 continue;
             }
             $this->pay($order, $at->addMinutes(2));
@@ -298,6 +391,8 @@ class DemoActivitySeeder extends Seeder
         $cart = app(CartService::class)->create($client?->customer?->id);
         $lines = mt_rand(1, 3);
         $zone = $this->zones[mt_rand(1, 10) <= 7 ? mt_rand(0, min(1, count($this->zones) - 1)) : mt_rand(0, count($this->zones) - 1)];
+        // Adresse choisie d'abord : la zone d'une adresse enregistrée fixe le minimum de commande à atteindre.
+        $delivery = $this->deliveryFor($client, $zone);
         $subtotal = 0;
         for ($l = 0; $l < $lines; $l++) {
             $variant = $this->variants[mt_rand(0, count($this->variants) - 1)];
@@ -336,7 +431,7 @@ class DemoActivitySeeder extends Seeder
                 'customer' => ['first_name' => $first, 'last_name' => $last, 'phone' => $client?->customer?->phone ?? $this->phone(),
                     'email' => $client?->email],
                 'fulfillment_type' => 'delivery',
-                'delivery' => ['zone_id' => $zone->id, 'district' => 'Quartier de démonstration', 'landmark' => self::LANDMARKS[mt_rand(0, count(self::LANDMARKS) - 1)]],
+                'delivery' => $delivery,
                 'slot_start_at' => $slots[mt_rand(0, count($slots) - 1)]['start_at'],
                 'payment_method' => 'simulator',
                 'notes' => mt_rand(1, 6) === 1 ? 'Écrire « Joyeux anniversaire » si possible (démo)' : null,
@@ -351,6 +446,34 @@ class DemoActivitySeeder extends Seeder
         $order->customer?->forceFill(['is_demo' => true])->save();
 
         return $order;
+    }
+
+    /**
+     * Adresse de livraison : 45 % GPS (dont quelques positions imprécises), 20 % repère sur la carte,
+     * 35 % saisie manuelle sans position ; un client avec compte utilise son adresse par défaut.
+     */
+    private function deliveryFor(?User $client, DeliveryZone &$zone): array
+    {
+        $landmark = self::LANDMARKS[mt_rand(0, count(self::LANDMARKS) - 1)];
+        $saved = $client?->customer?->addresses()->where('is_default', true)->first();
+        if ($saved) {
+            $zone = collect($this->zones)->firstWhere('id', $saved->zone_id) ?? $zone;
+
+            return ['zone_id' => $saved->zone_id, 'district' => $saved->district, 'street' => $saved->street, 'landmark' => $saved->landmark ?? $landmark]
+                + ($saved->lat !== null ? ['lat' => $saved->lat, 'lng' => $saved->lng, 'location_source' => 'saved', 'accuracy_m' => $saved->location_accuracy_m] : []);
+        }
+        $place = $this->spot($zone);
+        $base = ['zone_id' => $zone->id, 'district' => $place['district'], 'street' => self::STREETS[mt_rand(0, count(self::STREETS) - 1)], 'landmark' => $landmark];
+        $roll = mt_rand(1, 100);
+        if ($place['lat'] === null || $roll > 65) {
+            return $base;
+        }
+        $gps = $roll <= 45;
+
+        return $base + [
+            'lat' => $place['lat'], 'lng' => $place['lng'], 'location_source' => $gps ? 'gps' : 'map',
+            'accuracy_m' => $gps ? (mt_rand(1, 8) === 1 ? mt_rand(80, 160) : mt_rand(6, 40)) : null,
+        ];
     }
 
     private function pay(Order $order, CarbonImmutable $at): void

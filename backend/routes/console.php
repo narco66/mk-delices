@@ -17,6 +17,7 @@ use App\Models\IdempotencyKey;
 use App\Models\Order;
 use App\Models\Payment;
 use App\Models\User;
+use Database\Seeders\DemoActivitySeeder;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schedule;
@@ -150,6 +151,25 @@ Schedule::call(fn () => Cache::put(HealthController::SCHEDULER_HEARTBEAT, now()-
 Schedule::command('queue:monitor', ['database:default', '--max' => 50])->everyFiveMinutes();
 // Audit espace livreur E1 : mission proposée restée sans réponse -> alerte au responsable des livraisons.
 Schedule::command('mk:alert-unaccepted-missions')->everyTwoMinutes()->withoutOverlapping(5);
+
+/**
+ * Renouvelle le jeu de démonstration (local / préproduction) : la génération précédente est ARCHIVÉE (commandes
+ * passées en « test » : hors statistiques, écrans opérationnels et avis publiés ; rien n'est supprimé, les
+ * factures de test gardent leur numéro), puis une nouvelle génération datée du jour est produite.
+ */
+Artisan::command('mk:demo-refresh', function () {
+    if (! app()->environment(['local', 'testing', 'staging'])) {
+        $this->error('Commande interdite hors environnements local/testing/staging.');
+
+        return 1;
+    }
+    $archived = Order::query()->where('internal_notes', DemoActivitySeeder::MARKER)->where('is_test', false)->update(['is_test' => true]);
+    app(AuditLogger::class)->log('demo.activity_archived', null, null, ['orders' => $archived]);
+    $this->info("Génération précédente archivée : {$archived} commande(s) passée(s) en test (aucune suppression).");
+    $this->call('db:seed', ['--class' => DemoActivitySeeder::class, '--force' => true]);
+
+    return 0;
+})->purpose('Renouveler le jeu de démonstration (archive la génération précédente, puis régénère)');
 
 /** Marque comme commandes de test celles créées par les tests E2E (prénom « E2E »), hors production uniquement. */
 Artisan::command('mk:flag-test-orders {--first-name=E2E}', function () {

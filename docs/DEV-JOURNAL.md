@@ -75,5 +75,11 @@
   - commit et déploiement en préproduction.
 - **En attente :** les clés MapTiler (compte ouvert).
 
+## 18/11/2026 — Renouvellement du jeu de démonstration
+- **Commande `mk:demo-refresh`** (local et préproduction, interdite en production) : archive la génération précédente (`is_test`, sans suppression, journalisé `demo.activity_archived`), puis régénère, datée du jour.
+- **Géolocalisation dans la démonstration :** vrais quartiers des 4 zones, positions approximatives dans le périmètre de Dakar ; mélange GPS, carte, adresse enregistrée et saisie sans position ; adresses par défaut ; une correction par le commercial.
+- **Défauts trouvés en préparant le renouvellement et corrigés :** les commandes de test (E2E, démonstration archivée) apparaissaient dans les écrans opérationnels et les avis publiés, et **occupaient la capacité des créneaux** (elles pouvaient bloquer un vrai client). Elles sont désormais exclues : portées `Order::notTest()` et `DeliveryAssignment::forRealOrders()`. Aucun effet en production, où aucune commande n'est de test.
+- **Base locale :** sauvegarde `pg_dump` préalable, 77 commandes archivées, 68 nouvelles. Tests backend 180/180.
+
 ## Travaux restants (voir rapport final §15)
 Décisions métier/juridiques, contrats PSP, hébergement, sauvegardes, tests de charge, test avec lecteur d'écran, exécution réelle du déploiement et du test de restauration une fois l'hébergeur choisi.

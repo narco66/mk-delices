@@ -47,7 +47,7 @@ Générées par `DemoActivitySeeder` à travers les vrais services de l'applicat
 | Module | Contenu |
 |---|---|
 | Catalogue | Les 8 produits validés (sans photos : illustrations en attendant la séance photo) |
-| Commandes | ≈ 80 commandes sur 30 jours (hors lundis), dont des commandes du jour **dans chaque état** : à confirmer (payée et non payée), acceptée, en préparation, prête, confiée au livreur, en livraison, échec de livraison, ainsi que 2 brouillons WhatsApp |
+| Commandes | 60 à 80 commandes sur 30 jours (hors lundis ; le nombre exact dépend des créneaux disponibles), dont des commandes du jour **dans chaque état** : à confirmer (payée et non payée), acceptée, en préparation, prête, confiée au livreur, en livraison, échec de livraison, ainsi que 2 brouillons WhatsApp |
 | Paiements | Paiements confirmés par le prestataire simulé ; un code promo de démonstration (DEMO10) utilisé sur certaines commandes |
 | Remboursements | Commandes refusées après paiement, remboursements approuvés par un second utilisateur (double contrôle) |
 | Factures | Une facture par commande livrée (série `TEST-FA-…`, mention « sans valeur fiscale » hors production), PDF téléchargeable dans le back-office (Finances › Factures), le suivi de commande et l'espace client ; export CSV comptable |
@@ -56,6 +56,15 @@ Générées par `DemoActivitySeeder` à travers les vrais services de l'applicat
 | Avis | Avis approuvés (visibles sur les fiches produits) et avis en attente de modération |
 | Tableaux de bord | Chiffre d'affaires, panier moyen, taux de livraison réussie, meilleures ventes… calculés sur ces données |
 | Notifications | Notifications internes du back-office ; emails des clients avec compte visibles dans Mailpit |
+
+| Géolocalisation | Livraison limitée à la **ville de Dakar** (périmètre desservi). Commandes dans les vrais quartiers des 4 zones : positions GPS (dont quelques-unes imprécises), repères placés sur la carte, adresses enregistrées, et un tiers saisies **sans position**. Positions **approximatives** (centre de quartier ± 300 m). Une commande du jour corrigée par le commercial (« Modifiée par l'équipe ») |
+| Comptes clients | `client1` : Maison (position GPS, **par défaut**) et Bureau (sans position) ; `client2` : Maison (repère sur la carte) ; `client3` : Maison sans position |
+
+**Renouveler le jeu** (les commandes « du jour » vieillissent) : `php artisan mk:demo-refresh`. La génération précédente est **archivée**, pas supprimée : ses commandes passent en « test » et disparaissent des statistiques, des écrans de préparation, de livraison et des livreurs, des créneaux et des avis publiés. Elles restent consultables dans la liste des commandes (« inclure les tests »), et leurs factures de test gardent leur numéro.
+
+Avant de renouveler, sauvegarder la base :
+- poste local : `pg_dump`, copie dans `backend/storage/app/backups/` (ignoré par Git) ;
+- préproduction : `sudo /usr/local/sbin/mk-backup`.
 
 **Identification des données fictives :** clients marqués « démo » (`is_demo`), téléphones en `+221 70 000 xx xx`, emails en `@mk-delices.test`, commandes annotées « Donnée de démonstration » dans les notes internes.
 

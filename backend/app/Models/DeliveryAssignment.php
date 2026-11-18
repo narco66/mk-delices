@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Domain\Deliveries\AssignmentStatus;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -12,6 +13,12 @@ class DeliveryAssignment extends Model
     use HasUuids;
 
     protected $guarded = ['id'];
+
+    /** Missions des commandes réelles uniquement (voir Order::scopeNotTest). */
+    public function scopeForRealOrders(Builder $query): Builder
+    {
+        return $query->whereHas('order', fn (Builder $o) => $o->notTest());
+    }
 
     protected function casts(): array
     {

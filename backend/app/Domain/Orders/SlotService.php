@@ -100,7 +100,8 @@ class SlotService
     private function countsFor(array $starts, ?string $excludeOrderId): array
     {
         $utcStarts = array_map(fn (CarbonImmutable $s) => $s->utc(), $starts);
-        $rows = Order::query()
+        // Les commandes de test (E2E, démonstration archivée) n'occupent jamais la capacité réelle d'un créneau.
+        $rows = Order::query()->notTest()
             ->whereIn('status', OrderStatus::occupyingSlot())
             ->whereBetween('slot_start_at', [min($utcStarts), max($utcStarts)])
             ->when($excludeOrderId, fn ($q) => $q->where('id', '!=', $excludeOrderId))

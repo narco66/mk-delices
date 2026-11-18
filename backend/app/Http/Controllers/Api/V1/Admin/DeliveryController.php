@@ -21,7 +21,7 @@ class DeliveryController extends Controller
     /** Tableau d'affectation : commandes prêtes / en échec, missions actives, livreurs éligibles. */
     public function board(): JsonResponse
     {
-        $orders = Order::query()->whereIn('status', ['ready', 'delivery_failed', 'assigned', 'picked_up'])
+        $orders = Order::query()->notTest()->whereIn('status', ['ready', 'delivery_failed', 'assigned', 'picked_up'])
             ->where('fulfillment_type', 'delivery')
             ->with(['zone', 'activeAssignment.partner', 'assignments' => fn ($q) => $q->with('partner')->latest('assigned_at')])
             ->orderByRaw('slot_start_at ASC NULLS LAST')->get();
@@ -69,7 +69,7 @@ class DeliveryController extends Controller
     public function missions(Request $request): JsonResponse
     {
         $request->validate(['status' => ['nullable', 'string'], 'partner_id' => ['nullable', 'uuid']]);
-        $missions = DeliveryAssignment::query()->with(['partner', 'order'])
+        $missions = DeliveryAssignment::query()->forRealOrders()->with(['partner', 'order'])
             ->when($request->input('status'), fn ($q, $s) => $q->whereIn('status', explode(',', $s)))
             ->when($request->input('partner_id'), fn ($q, $p) => $q->where('partner_id', $p))
             ->latest('assigned_at')->paginate(50);
@@ -87,10 +87,12 @@ class DeliveryController extends Controller
                     coalesce(sum(a.cash_collected_xof) FILTER (WHERE a.status = 'delivered' AND a.settled_at IS NULL), 0)::bigint AS cash_held_xof,
                     count(a.id) FILTER (WHERE a.status = 'delivered')::int AS delivered_total,
                     count(a.id) FILTER (WHERE a.status = 'failed')::int AS failed_total
-             FROM delivery_partners p LEFT JOIN delivery_assignments a ON a.partner_id = p.id
+             FROM delivery_partners p
+             LEFT JOIN delivery_assignments a ON a.partner_id = p.id
+                AND a.order_id IN (SELECT id FROM orders WHERE is_test = false)
              GROUP BY p.id, p.display_name ORDER BY p.display_name"
         );
-        $unsettled = DeliveryService::payable(DeliveryAssignment::query()->with(['partner', 'order']))->whereNull('settled_at')->latest('closed_at')->get();
+        $unsettled = DeliveryService::payable(DeliveryAssignment::query()->forRealOrders()->with(['partner', 'order']))->whereNull('settled_at')->latest('closed_at')->get();
 
         return response()->json(['data' => [
             'partners' => array_map(fn ($r) => (array) $r + ['amount_due_xof' => (int) $r->amount_due_xof, 'cash_held_xof' => (int) $r->cash_held_xof], $rows),

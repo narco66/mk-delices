@@ -19,6 +19,7 @@ use Illuminate\Validation\ValidationException;
 use Spatie\Permission\Exceptions\UnauthorizedException;
 use Spatie\Permission\Middleware\PermissionMiddleware;
 use Spatie\Permission\Middleware\RoleMiddleware;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
@@ -82,9 +83,31 @@ return Application::configure(basePath: dirname(__DIR__))
             }
         });
         $exceptions->render(function (HttpExceptionInterface $e, Request $request) use ($error) {
-            if ($request->is('api/*') || $request->expectsJson()) {
-                return $error('http_error', $e->getStatusCode() >= 500 ? 'Erreur serveur.' : ($e->getMessage() ?: 'Requête refusée.'), $e->getStatusCode());
+            if (! $request->is('api/*') && ! $request->expectsJson()) {
+                return null;
             }
+            $status = $e->getStatusCode();
+            // Gestion des erreurs (20/11/2026) : jamais le message brut d'une exception du framework (anglais,
+            // détails internes : routes, méthodes…). Seul un abort(4xx, 'message') écrit dans le code est conservé.
+            [$code, $message] = match ($status) {
+                400 => ['bad_request', 'La demande est invalide.'],
+                403 => ['forbidden', 'Action non autorisée.'],
+                405 => ['method_not_allowed', 'Cette opération n’est pas disponible.'],
+                409 => ['conflict', 'Cette opération est en conflit avec l’état actuel. Rechargez la page.'],
+                413 => ['payload_too_large', 'Le fichier ou les données envoyés sont trop volumineux.'],
+                415 => ['unsupported_media_type', 'Ce type de contenu n’est pas accepté.'],
+                422 => ['validation_failed', 'Certaines informations sont invalides.'],
+                503 => ['maintenance', 'Le site est en cours de mise à jour. Réessayez dans quelques instants.'],
+                default => $status >= 500 ? ['server_error', 'Le service est momentanément indisponible. Réessayez dans quelques instants.']
+                    : ['http_error', 'La demande a été refusée.'],
+            };
+            if ($status < 500 && get_class($e) === HttpException::class && $e->getMessage() !== '') {
+                $message = $e->getMessage();
+            }
+            $retryAfter = $e->getHeaders()['Retry-After'] ?? null;
+
+            return $error($code, $message, $status, $retryAfter !== null ? ['retry_after' => (int) $retryAfter] : [])
+                ->withHeaders($retryAfter !== null ? ['Retry-After' => $retryAfter] : []);
         });
         $exceptions->render(function (Throwable $e, Request $request) use ($error) {
             if (($request->is('api/*') || $request->expectsJson()) && ! config('app.debug')) {

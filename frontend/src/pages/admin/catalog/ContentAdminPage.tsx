@@ -325,14 +325,20 @@ function BlockEditor({ block, onClose }: { block: ContentBlock; onClose: () => v
 
   const submit = () => {
     if (mode === 'json') {
+      let parsed: unknown
       try {
-        const parsed = JSON.parse(raw)
-        if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) throw new Error('Un objet JSON est attendu.')
-        setJsonError(null)
-        save.mutate(parsed)
-      } catch (err) {
-        setJsonError(err instanceof Error ? err.message : 'JSON invalide')
+        parsed = JSON.parse(raw)
+      } catch {
+        // Le message du navigateur (en anglais, technique) n'est pas affiché.
+        setJsonError('Texte JSON invalide : vérifiez les guillemets, les virgules et les accolades.')
+        return
       }
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+        setJsonError('Un objet JSON est attendu (entre accolades { … }).')
+        return
+      }
+      setJsonError(null)
+      save.mutate(parsed as Record<string, unknown>)
       return
     }
     save.mutate(data)

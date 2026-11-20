@@ -36,9 +36,19 @@ export function EmptyState({ icon, title, description, action, className }: Empt
   )
 }
 
+/**
+ * Message affichable pour toute erreur : celui du serveur (déjà rédigé en français pour l'utilisateur), complété
+ * du délai d'attente en cas de limitation (429). Une erreur JavaScript n'expose jamais son texte technique.
+ */
 export function errorMessage(error: unknown): string {
-  if (error instanceof ApiError) return error.message
-  return 'Une erreur inattendue est survenue.'
+  if (error instanceof ApiError) {
+    const retryAfter = Number(error.details?.retry_after)
+    if (error.status === 429 && retryAfter > 0) {
+      return `${error.message} Réessayez dans ${retryAfter < 60 ? `${retryAfter} s` : `${Math.ceil(retryAfter / 60)} min`}.`
+    }
+    return error.message
+  }
+  return 'Une erreur inattendue est survenue. Rechargez la page puis réessayez.'
 }
 
 export function ErrorState({ error, onRetry, className }: { error: unknown; onRetry?: () => void; className?: string }) {

@@ -29,6 +29,16 @@
 - Les gardes de routes ne sont qu'un confort : l'API reste la seule source d'autorisation.
 - Jetons de design dans `src/index.css` (`@theme`) ; ne pas coder de couleurs en dur hors exceptions documentées (bouton WhatsApp).
 
+## Messages d'erreur (règles du 20/11/2026)
+- **Format unique de l'API** : `{ error: { code, message, details }, request_id }`, avec en-tête `X-Request-Id`. Le `code` est stable, en anglais, et sert au programme et aux tests. Le `message` est en français, destiné à l'utilisateur.
+- **Message utile** : dire ce qui se passe et quoi faire (« Ce créneau est complet : choisissez-en un autre »), sans jargon ni faute rejetée sur l'utilisateur.
+- **Erreur métier** : `DomainException` (`unprocessable`, `conflict`, `forbidden`) avec un code et un message français. `abort(4xx, 'message français')` est réservé aux cas simples. Ne jamais renvoyer le message d'une exception du framework ou d'une bibliothèque : `bootstrap/app.php` le remplace par un message maîtrisé selon le statut.
+- **Erreur inattendue (5xx)** : message générique avec la **référence** (`request_id`), détail uniquement dans les journaux. `APP_DEBUG=false` hors poste de développement.
+- **Validation** : messages dans `lang/fr/validation.php`. Tout nouveau champ affiché à l'utilisateur reçoit un nom lisible dans `attributes`, ou dans `attributes()` de la FormRequest.
+- **Frontend** : toujours `errorMessage(error)` (Toast, `Notice`) ou `ErrorState` (écran, avec « Réessayer » et la référence). Erreurs de champ via `ApiError.fieldErrors`. Ne jamais afficher `error.message` d'une erreur JavaScript ou du navigateur.
+- **Cas réseau** gérés par `lib/api.ts` : hors ligne, délai dépassé (30 s, 120 s pour un envoi de fichier), réponse non JSON (502/503/504 de nginx, 413), session expirée (401 : déconnexion et toast), CSRF expiré (419 : nouvelle tentative automatique), limitation (429 : délai d'attente affiché).
+- **Erreurs de rendu** : `RouteError` par route, `AppErrorBoundary` au-dessus des fournisseurs ; erreur consignée dans la console, écran sans détail technique avec « Recharger la page ».
+
 ## Git (à appliquer dès l'initialisation du dépôt)
 - Branches `main` (production), `develop`, `feature/<id-exigence>-<sujet>`.
 - Messages de commit : `<type>(<module>): <résumé>` — ex. `feat(payments): rapprochement planifié`.

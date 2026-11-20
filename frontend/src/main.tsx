@@ -6,6 +6,7 @@ import { toast, Toaster } from 'sonner'
 import { AuthProvider } from '@/features/auth/AuthContext'
 import { CartProvider } from '@/features/cart/CartContext'
 import { ApiError } from '@/lib/api'
+import { AppErrorBoundary } from '@/pages/RouteError'
 import { router } from '@/routes/router'
 import './index.css'
 
@@ -51,13 +52,20 @@ window.addEventListener('vite:preloadError', (event) => {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <CartProvider>
-          <RouterProvider router={router} />
-          <Toaster position="top-center" richColors closeButton toastOptions={{ style: { fontFamily: 'Inter, sans-serif' } }} />
-        </CartProvider>
-      </AuthProvider>
-    </QueryClientProvider>
+    <AppErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <CartProvider>
+            <RouterProvider router={router} />
+            <Toaster
+              position="top-center"
+              richColors
+              closeButton
+              toastOptions={{ style: { fontFamily: 'Inter, sans-serif' } }}
+            />
+          </CartProvider>
+        </AuthProvider>
+      </QueryClientProvider>
+    </AppErrorBoundary>
   </StrictMode>,
 )

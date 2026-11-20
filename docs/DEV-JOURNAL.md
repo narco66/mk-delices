@@ -87,5 +87,11 @@
 - **Formation** : séances, exercice commun et guides (commercial, responsable des livraisons, livreur, administrateur) complétés pour la géolocalisation et le périmètre de Dakar.
 - **`mk:go-live-check`** : vérification en lecture seule des points go/no-go techniques, code 1 si un point bloque. Sur le poste local : 10 points bloquants attendus (démonstration, mentions légales, paiement réel…).
 
+## 20/11/2026 — Gestion des messages d'erreur
+- **Défaut majeur corrigé** : aucun fichier de traduction n'existait. Toutes les erreurs de validation arrivaient à l'utilisateur sous forme de clés brutes (« validation.email »). Ajout de `lang/fr/` : `validation.php` (toutes les règles de Laravel 13, noms de champs lisibles), `auth.php`, `passwords.php`, `pagination.php`.
+- **Serveur** : les erreurs HTTP du framework (405, 400, 413, 415, 503…) ne renvoient plus leur message brut (anglais, détails des routes). Codes et messages français par statut. Maintenance (503) avec délai d'attente. Seuls les messages écrits volontairement avec `abort()` sont conservés.
+- **Site** : messages selon le statut pour les réponses non JSON (502/504/413), délai maximal des requêtes (30 s ; 120 s pour les envois de fichiers), hors ligne, délai d'attente en cas de 429, référence technique aussi lue dans l'en-tête, écran d'erreur avec « Recharger » et filet de sécurité global (`AppErrorBoundary`), plus d'erreur JSON brute du navigateur dans le back-office.
+- **Règles** consignées dans `DEV-CONVENTIONS.md` § « Messages d'erreur ». Tests : `ErrorHandlingTest` (4), `api.test.ts` (+5).
+
 ## Travaux restants (voir rapport final §15)
 Décisions métier/juridiques, contrats PSP, hébergement, sauvegardes, tests de charge, test avec lecteur d'écran, exécution réelle du déploiement et du test de restauration une fois l'hébergeur choisi.

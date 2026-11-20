@@ -163,6 +163,28 @@ test('Paramètres et paiements : écrans de consultation', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Paramètres' })).toBeVisible()
   await expect(page.getByText('Valeurs à valider').first()).toBeVisible()
   await noHorizontalOverflow(page)
+
+  // D-PAY-04 : paiement à la livraison activable et plafonnable depuis les paramètres, puis remis à l'état initial.
+  const cod = page.getByRole('group', { name: /Paiement à la livraison/ })
+  const toggle = cod.getByRole('switch')
+  const cap = cod.getByLabel(/Montant maximal/)
+  const wasEnabled = await toggle.isChecked()
+  const previousCap = await cap.inputValue()
+  if (!wasEnabled) await toggle.click({ force: true })
+  await expect(cap).toBeEnabled()
+  await cap.fill('20000')
+  await page.getByRole('button', { name: 'Enregistrer' }).click()
+  await expect(page.getByText('Paramètres enregistrés')).toBeVisible()
+  await page.reload()
+  await expect(page.getByRole('group', { name: /Paiement à la livraison/ }).getByLabel(/Montant maximal/)).toHaveValue('20000')
+  await expect(page.getByText(/Soit 20\s000\sFCFA maximum/)).toBeVisible()
+
+  const codAgain = page.getByRole('group', { name: /Paiement à la livraison/ })
+  await codAgain.getByLabel(/Montant maximal/).fill(previousCap)
+  if (!wasEnabled) await codAgain.getByRole('switch').click({ force: true })
+  await page.getByRole('button', { name: 'Enregistrer' }).click()
+  await expect(page.getByText('Paramètres enregistrés').last()).toBeVisible()
+
   await page.goto('/admin/paiements')
   await expect(page.getByRole('heading', { name: 'Paiements' })).toBeVisible()
   await expect(page.getByText(/SIM-/).locator('visible=true').first()).toBeVisible()

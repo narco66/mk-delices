@@ -7,7 +7,7 @@ import { Badge, Card, PageHeader } from '@/components/ui/Display'
 import { ErrorState, Notice, Skeleton } from '@/components/ui/Feedback'
 import { Field, Input, Select, Textarea } from '@/components/ui/Form'
 import { api } from '@/lib/api'
-import { PAYMENT_LABELS } from '@/lib/format'
+import { formatXof, PAYMENT_LABELS } from '@/lib/format'
 import { TagInput, Toggle } from '../catalog/shared'
 import { applyServerErrors } from '../catalog/utils'
 
@@ -21,6 +21,9 @@ interface SettingItem {
 }
 
 type Hours = Record<string, [string, string][]>
+
+const COD = 'cash_on_delivery'
+const COD_MAX_KEY = 'payments.cash_on_delivery_max_xof'
 
 const GROUP_LABELS: Record<string, string> = {
   business: 'Entreprise et contact',
@@ -49,7 +52,6 @@ const INTEGER_KEYS = [
   'ordering.tracking_token_ttl_days',
   'ordering.max_qty_per_line',
   'quality.cold_chain_max_minutes',
-  'payments.cash_on_delivery_max_xof',
   'delivery.failed_fee_percent',
   'invoicing.vat_rate_percent',
 ]
@@ -112,12 +114,24 @@ export function SettingsPage() {
               <h2 className="mb-4 text-lg font-semibold">{GROUP_LABELS[group] ?? group}</h2>
               {group === 'payments' && (
                 <Notice className="mb-4">
-                  Un moyen de paiement en ligne n'est proposé aux clients que s'il est activé ici <strong>et</strong> configuré techniquement (contrat marchand et identifiants
-                  serveur). Aucun contrat marchand n'est validé à ce jour : Orange Money et carte bancaire restent inactifs.
+                  Un moyen de paiement <strong>en ligne</strong> n'est proposé aux clients que s'il est activé ici <strong>et</strong> configuré techniquement (contrat marchand et
+                  identifiants serveur). Aucun contrat marchand n'est validé à ce jour : Orange Money et carte bancaire restent inactifs. Le{' '}
+                  <strong>paiement à la livraison</strong> ne dépend d'aucun contrat : il se règle dans son propre bloc ci-dessous.
                 </Notice>
               )}
               <div className="divide-y divide-cocoa-100/60">
-                {items.map((s) => (
+                {items.map((s) =>
+                  s.key === COD_MAX_KEY ? (
+                    <div key={s.key} className="py-4 first:pt-0 last:pb-0">
+                      <CashOnDeliveryEditor
+                        enabled={!!(values['payments.methods'] as Record<string, boolean> | undefined)?.[COD]}
+                        maxXof={(values[COD_MAX_KEY] as number | null | undefined) ?? null}
+                        modified={dirty.has(COD_MAX_KEY) || dirty.has('payments.methods')}
+                        onEnabledChange={(on) => set('payments.methods', { ...((values['payments.methods'] as Record<string, boolean>) ?? {}), [COD]: on })}
+                        onMaxChange={(v) => set(COD_MAX_KEY, v)}
+                      />
+                    </div>
+                  ) : (
                   <div key={s.key} className="py-4 first:pt-0 last:pb-0">
                     <div className="mb-2 flex flex-wrap items-center gap-2">
                       <p className="text-sm font-semibold">{s.description ?? s.key}</p>
@@ -128,7 +142,8 @@ export function SettingsPage() {
                     <p className="mb-2 font-mono text-[11px] text-cocoa-400">{s.key}</p>
                     <SettingEditor setting={s} value={values[s.key]} onChange={(v) => set(s.key, v)} />
                   </div>
-                ))}
+                  ),
+                )}
               </div>
             </Card>
           ))}
@@ -160,7 +175,8 @@ function SettingEditor({ setting, value, onChange }: { setting: SettingItem; val
     const methods = (value as Record<string, boolean>) ?? {}
     return (
       <div className="grid gap-1 sm:grid-cols-2">
-        {Object.keys(methods).map((m) => (
+        {/* Paiement à la livraison : réglé dans son bloc dédié (activation + plafond). */}
+        {Object.keys(methods).filter((m) => m !== COD).map((m) => (
           <Toggle key={m} checked={!!methods[m]} onChange={(v) => onChange({ ...methods, [m]: v })} label={PAYMENT_LABELS[m] ?? m} />
         ))}
       </div>
@@ -206,6 +222,62 @@ function SettingEditor({ setting, value, onChange }: { setting: SettingItem; val
     return <Textarea aria-label={setting.description ?? key} rows={4} value={(value as string) ?? ''} onChange={(e) => onChange(e.target.value || null)} />
   }
   return <Input aria-label={setting.description ?? key} value={(value as string) ?? ''} onChange={(e) => onChange(e.target.value || null)} placeholder={key === 'business.whatsapp_number' ? '221XXXXXXXXX' : undefined} />
+}
+
+/**
+ * Paiement à la livraison (D-PAY-04) : activation (payments.methods.cash_on_delivery) et plafond
+ * (payments.cash_on_delivery_max_xof) réglés ensemble ; le plafond n'a de sens que si le paiement est activé.
+ */
+export function CashOnDeliveryEditor({
+  enabled,
+  maxXof,
+  modified = false,
+  onEnabledChange,
+  onMaxChange,
+}: {
+  enabled: boolean
+  maxXof: number | null
+  modified?: boolean
+  onEnabledChange: (enabled: boolean) => void
+  onMaxChange: (max: number | null) => void
+}) {
+  return (
+    <fieldset className="space-y-3">
+      <legend className="mb-2 flex flex-wrap items-center gap-2 text-sm font-semibold">
+        Paiement à la livraison
+        <Badge tone="warning">À valider par MK Délices</Badge>
+        {modified && <Badge tone="raspberry">Modifié</Badge>}
+      </legend>
+      <p className="text-sm text-cocoa-500">
+        Le client règle en espèces au livreur, qui saisit le montant reçu ; le commercial le retrouve dans les règlements. Aucun contrat n'est nécessaire.
+      </p>
+      <Toggle checked={enabled} onChange={onEnabledChange} label={enabled ? 'Proposé aux clients' : 'Non proposé aux clients'} />
+      <Field
+        label="Montant maximal d'une commande payée à la livraison (FCFA)"
+        hint={
+          enabled
+            ? 'Au-delà, la boutique exige un paiement en ligne. Laisser vide : sans plafond. Les commandes saisies par l’équipe ne sont pas limitées.'
+            : 'Activez d’abord le paiement à la livraison.'
+        }
+      >
+        {(p) => (
+          <Input
+            {...p}
+            className="max-w-48"
+            inputMode="numeric"
+            disabled={!enabled}
+            placeholder="Sans plafond"
+            value={maxXof === null ? '' : String(maxXof)}
+            onChange={(e) => {
+              const raw = e.target.value.replace(/\D/g, '')
+              onMaxChange(raw === '' ? null : Number(raw))
+            }}
+          />
+        )}
+      </Field>
+      {enabled && maxXof !== null && <p className="text-sm">Soit {formatXof(maxXof)} maximum par commande payée à la livraison.</p>}
+    </fieldset>
+  )
 }
 
 /** Horaires hebdomadaires : plages [ouverture, fermeture] par jour (heure de Dakar). */

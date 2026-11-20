@@ -17,6 +17,8 @@ Testez sur les appareils réellement utilisés : **téléphone** pour la boutiqu
 
 **Comptes de démonstration** (mot de passe communiqué séparément) : `admin@`, `commercial@`, `preparateur@`, `livraison@`, `livreur1@`, `livreur2@`, `client1@` à `client3@` — tous en `@mk-delices.test`.
 
+**Données à utiliser :** la **fiche du jeu d'essai** indique, pour chaque scénario, la commande (`MKD-…`), le code de remise ou le lien de suivi préparés pour le test. L'équipe technique la remet avant chaque session, après `php artisan mk:demo-refresh`. Voir [JEU-D-ESSAI.md](JEU-D-ESSAI.md).
+
 ## 2. Boutique (client, sur téléphone)
 
 | N° | Test | Étapes | Résultat attendu | OK / KO | Remarques |

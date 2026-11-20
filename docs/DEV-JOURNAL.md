@@ -104,5 +104,18 @@
 - **Démonstration** : trajets réalistes (20 à 30 min hors froid, quelques dépassements volontaires).
 - Tests : `DecisionParametersTest` (4). Backend 191/191, frontend 25/25.
 
+## 20/11/2026 — Jeu d'essai complet
+- **Générateur complété** (`DemoActivitySeeder`, `mk:demo-refresh`) : en plus de l'activité sur 30 jours et des commandes du jour dans chaque état, un cas préparé par les vrais services pour chaque scénario du cahier de recette qui n'avait pas de donnée :
+  - paiement échoué ;
+  - paiement « en vérification » ;
+  - commande téléphone encaissée au back-office ;
+  - remboursement partiel en attente d'approbation ;
+  - avis refusé ;
+  - missions refusée, rendue et sans réponse ;
+  - remise sans code ;
+  - dépassement de la chaîne du froid.
+- **Fiche du jeu d'essai** générée à chaque renouvellement (`storage/app/private/jeu-essai/JEU-D-ESSAI.md`, hors Git) : comptes, et pour chaque scénario la commande, le code de remise ou le lien de suivi à utiliser. Mode d'emploi : `RECETTE/JEU-D-ESSAI.md`.
+- **Base locale** : sauvegarde `pg_dump` préalable, 66 commandes archivées, nouvelle génération ; les 26 cas de la fiche sont générés.
+
 ## Travaux restants (voir rapport final §15)
 Décisions métier/juridiques, contrats PSP, hébergement, sauvegardes, tests de charge, test avec lecteur d'écran, exécution réelle du déploiement et du test de restauration une fois l'hébergeur choisi.

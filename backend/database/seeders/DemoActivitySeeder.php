@@ -28,6 +28,7 @@ use App\Models\User;
 use Carbon\Carbon;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use RuntimeException;
 
@@ -98,6 +99,15 @@ class DemoActivitySeeder extends Seeder
 
     private int $phoneSeq = 0;
 
+    /** @var array<string, list<string>> fiche du jeu d'essai : scénario du cahier de recette => données à utiliser */
+    private array $fiche = [];
+
+    /** Jeton de suivi de la dernière commande passée (lien de suivi invité, scénario R-08). */
+    private ?string $lastToken = null;
+
+    /** Emplacement de la fiche générée (storage/app/private), lisible par l'équipe technique. */
+    public const FICHE_PATH = 'jeu-essai/JEU-D-ESSAI.md';
+
     /** Scénarios imposés aux premières commandes : chaque cas métier apparaît au moins une fois. */
     private array $forcedRolls = [4, 7, 12, 14, 7, 12];
 
@@ -146,12 +156,16 @@ class DemoActivitySeeder extends Seeder
 
             // 2. Aujourd'hui : une commande dans chaque état du flux (tableaux de bord opérationnels).
             $this->currentOrders($clients);
+
+            // 3. Jeu d'essai : un cas préparé pour chaque scénario du cahier de recette non couvert ci-dessus.
+            $this->testScenarios($clients);
         } finally {
             Carbon::setTestNow();
             CarbonImmutable::setTestNow();
         }
 
         app(AuditLogger::class)->log('demo.activity_generated', null, null, ['orders' => Order::query()->where('internal_notes', self::MARKER)->count()]);
+        $this->writeFiche();
         $this->command?->info('Activité de démonstration générée : '.Order::query()->where('internal_notes', self::MARKER)->count().' commandes.');
     }
 
@@ -276,6 +290,7 @@ class DemoActivitySeeder extends Seeder
         if ($roll <= 4) { // annulée par le client avant confirmation
             $this->travel($at->addMinutes(20));
             app(OrderStateMachine::class)->cancelByCustomer($order, 'Changement de programme (démo)');
+            $this->noteOnce('R-09', "Commande annulée par le client : {$order->reference}");
 
             return;
         }
@@ -285,6 +300,7 @@ class DemoActivitySeeder extends Seeder
             app(OrderStateMachine::class)->apply($order, 'reject', $this->commercial, 'Rupture de mascarpone (démo)');
             $this->travel($at->addMinutes(60));
             app(RefundService::class)->approve($order->refunds()->firstOrFail(), $this->admin);
+            $this->noteOnce('C-04', "Commande payée refusée, remboursement approuvé (avoir émis) : {$order->reference}");
 
             return;
         }
@@ -293,12 +309,15 @@ class DemoActivitySeeder extends Seeder
         if ($roll <= 12) { // échec de livraison puis relivraison réussie
             $this->deliver($order, $slot, fail: 'client_absent');
             $this->deliver($order, $slot->addHours(3));
+            $this->noteOnce('L-05', "Échec « client absent » (course payée 50 %) puis relivraison réussie : {$order->reference}");
         } elseif ($roll <= 14) { // échec puis annulation (produit abîmé)
             $this->deliver($order, $slot, fail: 'produit_endommage');
             $this->travel($slot->addHours(2));
             app(OrderStateMachine::class)->apply($order, 'cancel', $this->commercial, 'Produit abîmé pendant le transport (démo)');
+            $this->noteOnce('L-05', "Échec « produit abîmé » (course non payée) puis annulation : {$order->reference}");
         } else {
             $this->deliver($order, $slot);
+            $this->noteOnce('R-12', 'Commande livrée avec facture PDF ('.($client ? $client->email : 'client invité').") : {$order->reference}");
             if (mt_rand(1, 3) === 1) {
                 $this->review($order, $slot->addHours(5));
             }
@@ -326,26 +345,38 @@ class DemoActivitySeeder extends Seeder
                     'zone_id' => $order->zone_id, 'district' => $snapshot['district'] ?? 'Quartier de démonstration',
                     'street' => $snapshot['street'] ?? null, 'landmark' => 'Repère précisé au téléphone par le client (démo)',
                 ]], $this->commercial);
+                $this->note('C-03', "Commande non payée (paiement en ligne non confirmé), à accepter → refusé : {$order->reference}");
+                $this->note('C-08', "Adresse modifiée par le commercial (zone « Modifiée par l'équipe ») : {$order->reference}");
 
                 continue;
             }
+            $token = $this->lastToken;
             $this->pay($order, $at->addMinutes(2));
             if ($step === 'pending_paid') {
+                $this->note('C-02', "Commande payée à accepter ({$clients[0]->email}) : {$order->reference}");
+                $this->note('R-08', "Suivi d'une commande (connecté en {$clients[0]->email}, ou par le lien) : ".$this->trackingLink($order, $token));
+
                 continue;
             }
             $this->travel($at->addMinutes(10));
             app(OrderStateMachine::class)->apply($order, 'accept', $this->commercial);
             if ($step === 'accepted') {
+                $this->noteOnce('P-02', "Commande acceptée, à démarrer en préparation (preparateur@) : {$order->reference}");
+
                 continue;
             }
             $this->travel($at->addMinutes(20));
             app(OrderStateMachine::class)->apply($order, 'start_preparation', $this->preparer);
             if ($step === 'preparing') {
+                $this->noteOnce('P-03', "Préparation démarrée (« Annuler le démarrage » possible 15 min) : {$order->reference}");
+
                 continue;
             }
             $this->travel($at->addMinutes(80));
             app(OrderStateMachine::class)->apply($order, 'mark_ready', $this->preparer, null, null, ['packaging_checked' => true]);
             if ($step === 'ready') {
+                $this->note('L-01', "Commande prête à affecter (livraison@) : {$order->reference}");
+
                 continue;
             }
             $partner = $this->partners[$i % count($this->partners)];
@@ -354,17 +385,25 @@ class DemoActivitySeeder extends Seeder
             $courier = $partner->user;
             app(DeliveryService::class)->courierAction($mission, $courier, 'accept');
             if ($step === 'assigned') {
+                $this->note('L-02', "Mission acceptée, à enlever ({$courier->email}) : {$order->reference}");
+
                 continue;
             }
             $this->travel($at->addMinutes(100));
             app(DeliveryService::class)->courierAction($mission, $courier, 'pick_up', ['packaging_checked' => true]);
             if ($step === 'picked_up') {
+                $this->note('L-03', "Commande en route, à livrer avec le code ({$courier->email}) : {$order->reference} — code de remise : {$order->fresh()->delivery_code}");
+                if (isset($order->address_snapshot['lat'])) {
+                    $this->note('G-10', "Itinéraire vers la position du client ({$courier->email}) : {$order->reference}");
+                }
+
                 continue;
             }
             $this->travel($at->addMinutes(140));
             app(DeliveryService::class)->courierAction($mission, $courier, 'fail', [
                 'incident_reason' => 'client_injoignable', 'incident_note' => 'Trois appels sans réponse (démo)', 'product_condition' => 'intact', 'contact_attempted' => true,
             ]);
+            $this->note('L-06', "Échec du jour « client injoignable », à réaffecter (livraison@) : {$order->reference}");
         }
 
         // Deux brouillons WhatsApp en attente de confirmation commerciale.
@@ -375,6 +414,7 @@ class DemoActivitySeeder extends Seeder
             app(CartService::class)->setItem($cart['cart'], $variant->id, 2);
             $draft = app(CheckoutService::class)->saveWhatsAppDraft($cart['cart'], ['zone_id' => $this->zones[0]->id, 'first_name' => self::FIRST_NAMES[10 + $n]], null)['order'];
             $draft->forceFill(['internal_notes' => self::MARKER])->save();
+            $this->note('C-06', "Brouillon WhatsApp à compléter puis confirmer : {$draft->reference}");
         }
 
         // Règlement des livreurs : les missions des 30 jours sauf la dernière semaine sont réglées.
@@ -386,7 +426,7 @@ class DemoActivitySeeder extends Seeder
         }
     }
 
-    private function place(?User $client, ?string $promo = null): ?Order
+    private function place(?User $client, ?string $promo = null, ?User $staff = null): ?Order
     {
         $cart = app(CartService::class)->create($client?->customer?->id);
         $lines = mt_rand(1, 3);
@@ -433,15 +473,17 @@ class DemoActivitySeeder extends Seeder
                 'fulfillment_type' => 'delivery',
                 'delivery' => $delivery,
                 'slot_start_at' => $slots[mt_rand(0, count($slots) - 1)]['start_at'],
-                'payment_method' => 'simulator',
+                'payment_method' => $staff ? null : 'simulator',
+                'channel' => $staff ? 'phone' : null,
                 'notes' => mt_rand(1, 6) === 1 ? 'Écrire « Joyeux anniversaire » si possible (démo)' : null,
                 'accepted_terms' => true,
                 'promotion_code' => $promo,
-            ], $client);
+            ], $client, $staff);
         } catch (DomainException) {
             return null; // créneau complet ou promotion épuisée : on passe à la suivante
         }
         $order = $placed['order'];
+        $this->lastToken = $placed['tracking_token'] ?? null;
         $order->forceFill(['internal_notes' => self::MARKER])->save();
         $order->customer?->forceFill(['is_demo' => true])->save();
 
@@ -495,7 +537,7 @@ class DemoActivitySeeder extends Seeder
         $machine->apply($order, 'mark_ready', $this->preparer, null, null, ['packaging_checked' => true]);
     }
 
-    private function deliver(Order $order, CarbonImmutable $slot, ?string $fail = null): void
+    private function deliver(Order $order, CarbonImmutable $slot, ?string $fail = null, ?int $minutesAfterSlot = null, bool $withoutCode = false): void
     {
         $deliveries = app(DeliveryService::class);
         $partner = $this->partners[mt_rand(0, count($this->partners) - 1)];
@@ -507,7 +549,7 @@ class DemoActivitySeeder extends Seeder
         $deliveries->courierAction($mission, $partner->user, 'pick_up', ['packaging_checked' => true]);
         // Trajet réaliste (20 à 30 min hors froid) ; environ une livraison sur douze dépasse le seuil de la chaîne
         // du froid (30 min) pour illustrer l'alerte et la trace dans l'historique.
-        $this->travel($slot->addMinutes(mt_rand(1, 12) === 1 ? mt_rand(15, 25) : mt_rand(0, 9)));
+        $this->travel($slot->addMinutes($minutesAfterSlot ?? (mt_rand(1, 12) === 1 ? mt_rand(15, 25) : mt_rand(0, 9))));
         if ($fail) {
             $deliveries->courierAction($mission, $partner->user, 'fail', [
                 'incident_reason' => $fail, 'incident_note' => 'Incident de démonstration', 'contact_attempted' => true,
@@ -517,10 +559,211 @@ class DemoActivitySeeder extends Seeder
             return;
         }
         // Remise avec le code donné par le client (cas nominal) : pas d'alerte « sans code » dans la démonstration.
-        $code = (string) $mission->order()->value('delivery_code');
+        $code = $withoutCode ? '' : (string) $mission->order()->value('delivery_code');
         $deliveries->courierAction($mission, $partner->user, 'deliver', $code !== ''
             ? ['proof_type' => 'code', 'proof_reference' => $code]
             : ['proof_type' => 'recipient_confirmation', 'proof_reference' => 'Remis en main propre (démo)']);
+    }
+
+    /**
+     * Jeu d'essai : un cas préparé, par les vrais services, pour chaque scénario du cahier de recette
+     * (docs/RECETTE/CAHIER-DE-RECETTE-MK-DELICES.md) qui n'est pas déjà couvert par l'activité ci-dessus.
+     * Chaque cas est indépendant : un refus métier est consigné dans la fiche au lieu d'interrompre la génération.
+     */
+    private function testScenarios(array $clients): void
+    {
+        $machine = app(OrderStateMachine::class);
+        $payments = app(PaymentService::class);
+        $deliveries = app(DeliveryService::class);
+        $yesterday = $this->today->subDay()->isMonday() ? $this->today->subDays(2) : $this->today->subDay();
+        $base = ($this->today->isMonday() ? $this->today->addDay() : $this->today)->setTime(8, 0);
+
+        $cases = [
+            'R-07' => function () use ($payments, $base) {
+                $this->travel($base->addMinutes(170));
+                $order = $this->place(null) ?? throw new RuntimeException('créneau indisponible');
+                $token = $this->lastToken;
+                $payment = $payments->initiate($order->fresh(), 'simulator', 'demo-'.Str::uuid());
+                $payments->applyVerifiedStatus($payment, new GatewayStatus('failed', $payment->amount_xof, 'XOF', 'demo'), 'demo');
+
+                return "Paiement refusé par le prestataire, nouvelle tentative possible depuis le suivi : {$order->reference} — ".$this->trackingLink($order, $token);
+            },
+            'C-03 bis' => function () use ($payments, $base) {
+                $this->travel($base->addMinutes(175));
+                $order = $this->place(null) ?? throw new RuntimeException('créneau indisponible');
+                $payments->initiate($order->fresh(), 'simulator', 'demo-'.Str::uuid());
+
+                return "Paiement « en vérification » (session ouverte, jamais confirmée) : l'acceptation doit rester bloquée : {$order->reference}";
+            },
+            'C-05 / C-07' => function () use ($payments, $base) {
+                $this->travel($base->addMinutes(180));
+                $order = $this->place(null, null, $this->commercial) ?? throw new RuntimeException('créneau indisponible');
+                $payments->recordManualPayment($order->fresh(), $order->total_xof, 'cash', 'Espèces reçues à la boutique (démo)', $this->commercial);
+
+                return "Commande prise par téléphone (canal « Téléphone ») et encaissée en espèces au back-office : {$order->reference}";
+            },
+            'C-09 / A-01 / A-02' => function () use ($yesterday) {
+                $this->travel($yesterday->setTime(9, 0));
+                $order = $this->place(null) ?? throw new RuntimeException('créneau indisponible');
+                $this->pay($order, $yesterday->setTime(9, 3));
+                $this->prepareOrder($order, $yesterday->setTime(9, 3));
+                $this->deliver($order, CarbonImmutable::parse($order->fresh()->slot_start_at));
+                $this->travel(CarbonImmutable::parse($order->fresh()->slot_start_at)->addHours(2));
+                $amount = min(1000, $order->fresh()->paid_xof);
+                app(RefundService::class)->requestForOrder($order->fresh(), $amount, 'Une coupe abîmée à la livraison (démo)', $this->commercial);
+
+                return "Remboursement partiel de {$amount} FCFA demandé par commercial@, EN ATTENTE : à approuver par admin@ (A-01) ; le commercial ne peut pas l'approuver lui-même (A-02) : {$order->reference}";
+            },
+            'C-12' => function () {
+                $order = Order::query()->where('internal_notes', self::MARKER)->where('is_test', false)->where('status', 'delivered')
+                    ->whereNotIn('id', Review::query()->whereNotNull('order_id')->select('order_id'))->latest('delivered_at')->firstOrFail();
+                $this->travel(CarbonImmutable::parse($order->delivered_at)->addHours(3));
+                Review::query()->create([
+                    'order_id' => $order->id, 'product_id' => $order->items()->value('product_id'), 'customer_id' => $order->customer_id,
+                    'author_name' => ($order->customer_snapshot['first_name'] ?? 'Client').' (démo)', 'stars' => 1,
+                    'comment' => 'Message hors sujet avec un lien publicitaire (démo : avis à refuser).', 'moderation_status' => 'rejected',
+                    'moderated_by' => $this->commercial->id, 'moderated_at' => now(),
+                ]);
+
+                return "Avis refusé (invisible sur la fiche produit), à côté des avis approuvés et en attente : commande {$order->reference}";
+            },
+            'L-07' => function () use ($machine, $deliveries, $base) {
+                [$order, $partner] = $this->readyToday($base->addMinutes(185), $machine);
+                $this->travel($base->addMinutes(185 + 95));
+                $mission = $deliveries->assign($order, $partner, $this->manager);
+                $deliveries->courierAction($mission, $partner->user, 'refuse', ['reason' => 'Trop loin de ma position actuelle (démo)']);
+
+                return "Mission refusée par {$partner->user->email} avec motif ; commande de nouveau « à affecter » : {$order->reference}";
+            },
+            'L-07b' => function () use ($machine, $deliveries, $base) {
+                [$order, $partner] = $this->readyToday($base->addMinutes(190), $machine);
+                $this->travel($base->addMinutes(190 + 95));
+                $mission = $deliveries->assign($order, $partner, $this->manager);
+                $deliveries->courierAction($mission, $partner->user, 'accept');
+                $deliveries->courierAction($mission, $partner->user, 'release', ['reason' => 'Panne de moto (démo)']);
+
+                return "Mission acceptée puis rendue par {$partner->user->email} (motif « panne ») ; le responsable a été notifié : {$order->reference}";
+            },
+            'L-07d' => function () use ($machine, $deliveries, $base) {
+                [$order, $partner] = $this->readyToday($base->addMinutes(195), $machine);
+                $this->travel($base->addMinutes(195 + 95));
+                $deliveries->assign($order, $partner, $this->manager);
+
+                return "Mission proposée à {$partner->user->email}, jamais acceptée : alerte « Mission non acceptée » au responsable 10 min après la proposition : {$order->reference}";
+            },
+            'Remise sans code' => function () use ($yesterday) {
+                $this->travel($yesterday->setTime(9, 30));
+                $order = $this->place(null) ?? throw new RuntimeException('créneau indisponible');
+                $this->pay($order, $yesterday->setTime(9, 33));
+                $this->prepareOrder($order, $yesterday->setTime(9, 33));
+                $this->deliver($order, CarbonImmutable::parse($order->fresh()->slot_start_at), withoutCode: true);
+
+                return "Livrée « sans code » (nom du destinataire noté) : alerte au commercial pour vérification : {$order->reference}";
+            },
+            'Chaîne du froid' => function () use ($yesterday) {
+                $this->travel($yesterday->setTime(10, 0));
+                $order = $this->place(null) ?? throw new RuntimeException('créneau indisponible');
+                $this->pay($order, $yesterday->setTime(10, 3));
+                $this->prepareOrder($order, $yesterday->setTime(10, 3));
+                $this->deliver($order, CarbonImmutable::parse($order->fresh()->slot_start_at), minutesAfterSlot: 25);
+
+                return "Remise 45 min après l'enlèvement (seuil : 30 min) : dépassement inscrit dans l'historique, alerte au responsable : {$order->reference}";
+            },
+        ];
+        foreach ($cases as $scenario => $case) {
+            try {
+                $this->note($scenario, $case());
+            } catch (DomainException|RuntimeException $e) {
+                $this->note($scenario, 'NON GÉNÉRÉ : '.$e->getMessage());
+                $this->command?->warn("Jeu d'essai {$scenario} non généré : {$e->getMessage()}");
+            }
+        }
+    }
+
+    /** Commande du jour payée, acceptée, préparée et prête, et un livreur pour la recevoir. */
+    private function readyToday(CarbonImmutable $at, OrderStateMachine $machine): array
+    {
+        $this->travel($at);
+        $order = $this->place(null) ?? throw new RuntimeException('créneau indisponible');
+        $this->pay($order, $at->addMinutes(2));
+        $this->travel($at->addMinutes(10));
+        $machine->apply($order, 'accept', $this->commercial);
+        $this->travel($at->addMinutes(20));
+        $machine->apply($order, 'start_preparation', $this->preparer);
+        $this->travel($at->addMinutes(80));
+        $machine->apply($order, 'mark_ready', $this->preparer, null, null, ['packaging_checked' => true]);
+
+        return [$order->fresh(), $this->partners[0]];
+    }
+
+    private function note(string $scenario, string $text): void
+    {
+        $this->fiche[$scenario][] = $text;
+    }
+
+    private function noteOnce(string $scenario, string $text): void
+    {
+        if (! isset($this->fiche[$scenario])) {
+            $this->note($scenario, $text);
+        }
+    }
+
+    private function trackingLink(Order $order, ?string $token): string
+    {
+        return $token ? rtrim((string) config('mkdelices.frontend_url'), '/')."/suivi/{$order->reference}?t=".rawurlencode($token) : "{$order->reference} (lien indisponible)";
+    }
+
+    /**
+     * Fiche du jeu d'essai : comptes, et pour chaque scénario du cahier de recette, la donnée à utiliser.
+     * Écrite dans storage/app/private/jeu-essai/ (références propres à cette génération) et affichée en console.
+     */
+    private function writeFiche(): void
+    {
+        $order = ['R-', 'C-', 'P-', 'L-', 'G-', 'A-'];
+        uksort($this->fiche, function (string $a, string $b) use ($order) {
+            $rank = fn (string $k) => ($i = array_search(substr($k, 0, 2), $order, true)) === false ? 99 : $i;
+
+            return [$rank($a), $a] <=> [$rank($b), $b];
+        });
+        $lines = [
+            '# Fiche du jeu d\'essai — MK Délices',
+            '',
+            '**Générée le** '.now('Africa/Dakar')->format('d/m/Y à H:i').' (Dakar) par `php artisan mk:demo-refresh`. Données **fictives** ; références propres à cette génération.',
+            '**Scénarios :** voir `docs/RECETTE/CAHIER-DE-RECETTE-MK-DELICES.md`. Mode d\'emploi : `docs/RECETTE/JEU-D-ESSAI.md`.',
+            '',
+            '## Comptes',
+            '',
+            '| Rôle | Compte |',
+            '|---|---|',
+            '| Administrateur | `admin@mk-delices.test` |',
+            '| Gestionnaire commercial | `commercial@mk-delices.test` |',
+            '| Préparateur | `preparateur@mk-delices.test` |',
+            '| Responsable des livraisons | `livraison@mk-delices.test` |',
+            '| Livreurs | `livreur1@mk-delices.test`, `livreur2@mk-delices.test` |',
+            '| Clients avec compte | `client1@mk-delices.test` (2 adresses, consentement aux offres), `client2@…`, `client3@…` |',
+            '',
+            'Mot de passe : celui de l\'environnement (poste local : `docs/ACCES-DEMONSTRATION.md` ; préproduction : communiqué aux testeurs).',
+            '',
+            '## Données par scénario',
+            '',
+            '| Scénario | Donnée à utiliser |',
+            '|---|---|',
+        ];
+        foreach ($this->fiche as $scenario => $items) {
+            foreach ($items as $item) {
+                $lines[] = '| '.$scenario.' | '.str_replace('|', '\|', $item).' |';
+            }
+        }
+        $lines[] = '';
+        $lines[] = '## Scénarios sans donnée préparée (le testeur crée la donnée)';
+        $lines[] = '';
+        $lines[] = 'R-01 à R-06, R-10, R-11, R-13, R-14 (boutique), C-10, C-11 (catalogue, code `DEMO10`), C-13, C-14, P-01, P-04, L-07c, L-08, L-09, G-01 à G-07, G-11, G-12, A-03 à A-05 : les données existent déjà (catalogue, commandes ci-dessus, statistiques sur 30 jours) ou se créent pendant le test.';
+        $lines[] = 'L-04 (paiement à la livraison) : désactivé par décision ; l\'activer d\'abord dans Paramètres › Paiement à la livraison.';
+        Storage::disk('local')->put(self::FICHE_PATH, implode("\n", $lines)."\n");
+        $this->command?->info('Fiche du jeu d\'essai : '.Storage::disk('local')->path(self::FICHE_PATH));
+        foreach ($this->fiche as $scenario => $items) {
+            $this->command?->line("  {$scenario} : ".$items[0]);
+        }
     }
 
     private function review(Order $order, CarbonImmutable $at): void

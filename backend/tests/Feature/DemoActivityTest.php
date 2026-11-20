@@ -15,6 +15,7 @@ use Database\Seeders\DemoActivitySeeder;
 use Database\Seeders\DemoDataSeeder;
 use Database\Seeders\LaunchConfigurationSeeder;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 /** Le jeu de démonstration passe par les vrais services : il doit respecter tous les invariants métier. */
@@ -22,6 +23,7 @@ class DemoActivityTest extends TestCase
 {
     public function test_demo_activity_covers_every_module_and_respects_business_invariants(): void
     {
+        Storage::fake('local');
         $this->seed(DemoDataSeeder::class);
         app(CatalogImporter::class)->import(base_path('../docs/propositions/catalogue-propose.csv'), publish: true);
         $this->seed(LaunchConfigurationSeeder::class);
@@ -73,6 +75,22 @@ class DemoActivityTest extends TestCase
             $addresses = User::query()->where('email', "{$client}@mk-delices.test")->firstOrFail()->customer->addresses;
             $this->assertSame(1, $addresses->where('is_default', true)->count(), "{$client} : une seule adresse par défaut");
         }
+
+        // Jeu d'essai : un cas préparé par scénario du cahier de recette, et la fiche qui les référence.
+        $fiche = Storage::disk('local')->get(DemoActivitySeeder::FICHE_PATH);
+        foreach (['R-07', 'R-08', 'C-02', 'C-03', 'C-05 / C-07', 'C-06', 'C-09 / A-01 / A-02', 'C-12', 'L-01', 'L-03', 'L-06', 'L-07', 'L-07b', 'L-07d', 'Remise sans code', 'Chaîne du froid'] as $scenario) {
+            $this->assertStringContainsString("| {$scenario} | ", $fiche, "scénario {$scenario} dans la fiche");
+        }
+        $this->assertStringNotContainsString('NON GÉNÉRÉ', $fiche);
+        $this->assertSame(1, Refund::query()->where('status', 'requested')->where('reason', 'like', 'Une coupe abîmée%')->count(), 'remboursement partiel à approuver');
+        $this->assertTrue(Review::query()->where('moderation_status', 'rejected')->exists());
+        $this->assertTrue(DB::table('payments')->where('status', 'failed')->exists(), 'paiement échoué');
+        $this->assertTrue(Order::query()->where('channel', 'phone')->where('payment_status', 'paid')->exists(), 'commande téléphone encaissée');
+        $this->assertTrue(DeliveryAssignment::query()->where('status', 'refused')->exists());
+        $this->assertTrue(DeliveryAssignment::query()->where('cancel_reason', 'like', 'Rendue par le livreur%')->exists());
+        $this->assertTrue(DeliveryAssignment::query()->where('status', 'proposed')->exists());
+        $this->assertTrue(DeliveryAssignment::query()->where('proof_type', 'recipient_confirmation')->exists(), 'remise sans code');
+        $this->assertTrue(DB::table('order_events')->where('reason', 'like', 'Remis après % min hors froid%')->exists(), 'dépassement de la chaîne du froid');
 
         // Rejouer ne duplique rien.
         $count = Order::query()->count();

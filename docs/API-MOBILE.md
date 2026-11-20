@@ -9,7 +9,7 @@ L'application mobile utilise **la même API REST que le site** (`/api/v1`) : mê
 
 | Environnement | URL de base |
 |---|---|
-| Préproduction | `https://srv2163043.hstgr.cloud/api/v1` — le site est protégé par un mot de passe d'accès qui utilise lui aussi l'en-tête `Authorization`, incompatible avec le jeton `Bearer`. L'équipe mobile communique donc **l'adresse IP publique** de ses postes / réseau de test, ajoutée à la liste blanche Nginx (`allow …;` dans `mk-delices-staging.conf`) |
+| Préproduction | `https://preprod.mk-delices.tech/api/v1` (depuis le 20/11/2026 ; l'ancienne adresse `srv2163043.hstgr.cloud` redirige) — le site est protégé par un mot de passe d'accès qui utilise lui aussi l'en-tête `Authorization`, incompatible avec le jeton `Bearer`. L'équipe mobile communique donc **l'adresse IP publique** de ses postes / réseau de test, ajoutée à la liste blanche Nginx (`allow …;` dans `mk-delices-staging.conf`) |
 | Production | `https://<domaine définitif>/api/v1` |
 | Poste de développement | `http://<IP du poste>:8000/api/v1` (`php artisan serve --host=0.0.0.0`) |
 

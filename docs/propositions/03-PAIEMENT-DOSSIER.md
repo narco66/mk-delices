@@ -9,7 +9,7 @@
 - [ ] Justificatif d'adresse de l'entreprise
 - [ ] Coordonnées bancaires (RIB) ou compte de réception des fonds
 - [ ] Description de l'activité : vente en ligne de pâtisseries fraîches, livrées à Dakar
-- [ ] Adresse du site : `https://srv2163043.hstgr.cloud` (provisoire) puis le nom de domaine définitif
+- [ ] Adresse du site : `https://preprod.mk-delices.tech` (préproduction, tests Wave) puis `https://mk-delices.com` (production, adresse principale ; `mk-delices.tech` y redirigera)
 - [ ] Panier moyen et volume mensuel estimés
 - [ ] Email et téléphone du contact technique
 

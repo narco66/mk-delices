@@ -37,6 +37,8 @@ Après toute modification : `php artisan config:cache`.
    - autre fournisseur : remplacer ce domaine.
 5. Contrôle : ouvrir `/commander`, puis « Choisir sur la carte ». Les tuiles s'affichent, sans erreur CSP dans la console du navigateur.
 
+**Depuis le 20/11/2026, la préproduction est à `https://preprod.mk-delices.tech`** (l'origine est acceptée, la clé n'étant plus restreinte ; à ajouter aux origines si la restriction est rétablie).
+
 **État au 18/11/2026 (préproduction).** La clé fournie par MK Délices est en place dans `MAPS_TILES_URL`. MK Délices a ajouté `srv2163043.hstgr.cloud` aux origines autorisées, et la carte s'affiche : tuiles en 200, attribution présente, aucune erreur CSP. Contrôle fait dans Edge en format mobile sur `/commander`. Le domaine de production devra être ajouté de la même façon.
 
 **Géocodage activé le 18/11/2026** (`MAPS_GEOCODER=maptiler`). MK Délices a levé la restriction d'origine de sa clé, qui sert donc aussi au serveur.

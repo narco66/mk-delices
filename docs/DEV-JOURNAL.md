@@ -117,5 +117,16 @@
 - **Fiche du jeu d'essai** générée à chaque renouvellement (`storage/app/private/jeu-essai/JEU-D-ESSAI.md`, hors Git) : comptes, et pour chaque scénario la commande, le code de remise ou le lien de suivi à utiliser. Mode d'emploi : `RECETTE/JEU-D-ESSAI.md`.
 - **Base locale** : sauvegarde `pg_dump` préalable, 66 commandes archivées, nouvelle génération ; les 26 cas de la fiche sont générés.
 
+## 20/11/2026 — Domaines : préproduction sur preprod.mk-delices.tech
+- **Constat** : `mk-delices.com` et `mk-delices.tech` (enregistrés chez Hostinger) pointaient vers la page de parking de Hostinger (`2.57.91.91`), pas vers le VPS (`2.25.8.182`), et nginx ne connaissait que `srv2163043.hstgr.cloud`.
+- **Décisions de MK Délices** : la préproduction passe sur un sous-domaine ; `mk-delices.com` sera l'adresse principale de la production, et `mk-delices.tech` y redirigera.
+- **Fait** :
+  - enregistrement DNS `preprod.mk-delices.tech` créé par MK Délices ;
+  - certificat Let's Encrypt, avec renouvellement automatique vérifié ;
+  - nginx : nouveau nom, et l'ancienne adresse redirigée (301) en conservant chemin et paramètres ;
+  - `.env` : `APP_URL`, `FRONTEND_URL`, `SESSION_DOMAIN`, `SANCTUM_STATEFUL_DOMAINS`, expéditeur des emails ;
+  - vérifié : HTTPS, mot de passe d'accès, connexion réelle au back-office, santé, carte.
+- `mk-delices.com` et `mk-delices.tech` restent sur la page de parking jusqu'à l'ouverture de la production.
+
 ## Travaux restants (voir rapport final §15)
 Décisions métier/juridiques, contrats PSP, hébergement, sauvegardes, tests de charge, test avec lecteur d'écran, exécution réelle du déploiement et du test de restauration une fois l'hébergeur choisi.

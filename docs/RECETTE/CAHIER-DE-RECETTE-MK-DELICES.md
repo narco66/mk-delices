@@ -1,7 +1,7 @@
 # Cahier de recette — MK Délices
 
 **Pour :** l'équipe MK Délices qui teste l'application avant son ouverture au public (gérance, commercial, préparation, livraisons, livreurs).
-**Où :** la préproduction, https://srv2163043.hstgr.cloud — identifiant et mots de passe communiqués séparément (jamais par écrit dans ce document).
+**Où :** la préproduction, **https://preprod.mk-delices.tech** — identifiant et mots de passe communiqués séparément (jamais par écrit dans ce document).
 **Quand :** phase P6 du plan de développement. La recette est terminée quand tous les tests sont passés et qu'**aucun problème bloquant** ne reste ouvert.
 
 > **Tout est fictif en préproduction.** Aucun paiement n'est réel (choisir « Paiement simulé »), aucun email ni SMS n'est envoyé, aucun livreur ne se déplace. Vous pouvez tout essayer sans risque : passer des commandes, les annuler, rembourser, déclarer des échecs de livraison…

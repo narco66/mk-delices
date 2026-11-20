@@ -240,6 +240,41 @@ class DeliveryService
         return $sent;
     }
 
+    /**
+     * Seuil sanitaire de la chaîne du froid (D-QUA-01, paramètre quality.cold_chain_max_minutes) : durée maximale
+     * entre l'enlèvement à l'atelier et la remise au client. Null = contrôle désactivé (seuil non fixé).
+     */
+    public function coldChainMaxMinutes(): ?int
+    {
+        $minutes = (int) $this->settings->get('quality.cold_chain_max_minutes');
+
+        return $minutes > 0 ? $minutes : null;
+    }
+
+    /**
+     * Produits frais encore en route au-delà du seuil : alerte UNE fois par mission au responsable des livraisons,
+     * pendant qu'il est encore temps d'agir (appel du livreur, retour à l'atelier). Planifiée toutes les 2 minutes.
+     *
+     * @return int nombre d'alertes envoyées
+     */
+    public function alertColdChainBreaches(): int
+    {
+        $max = $this->coldChainMaxMinutes();
+        if ($max === null) {
+            return 0;
+        }
+        $late = DeliveryAssignment::query()->forRealOrders()->with('order')
+            ->where('status', AssignmentStatus::PickedUp->value)
+            ->where('picked_up_at', '<', now()->subMinutes($max))
+            ->whereHas('order.items.product', fn ($p) => $p->where('requires_cold_chain', true))->get();
+        $sent = 0;
+        foreach ($late as $mission) {
+            $sent += $this->alertStaff($mission->order, "assignment:{$mission->id}:cold_chain", 'delivery.cold_chain_exceeded', [User::ROLE_RESP_LIVRAISON]) ? 1 : 0;
+        }
+
+        return $sent;
+    }
+
     private function pickUp(DeliveryAssignment $mission, Order $order, User $courier, array $data): void
     {
         if (empty($data['packaging_checked'])) {
@@ -289,8 +324,8 @@ class DeliveryService
         }
     }
 
-    /** Notification interne unique (anti-doublon par clé) aux rôles indiqués. */
-    private function alertStaff(Order $order, string $dedupeKey, string $event, array $roles): void
+    /** Notification interne unique (anti-doublon par clé) aux rôles indiqués ; vrai si elle vient d'être envoyée. */
+    private function alertStaff(Order $order, string $dedupeKey, string $event, array $roles): bool
     {
         $claimed = NotificationLog::query()->insertOrIgnore([
             'id' => (string) Str::uuid(), 'order_id' => $order->id, 'event' => "staff:{$event}", 'channel' => 'database',
@@ -299,6 +334,8 @@ class DeliveryService
         if ($claimed === 1) {
             Notification::send(User::role($roles)->where('is_active', true)->get(), new StaffOrderActivity($order, $event));
         }
+
+        return $claimed === 1;
     }
 
     private function deliver(DeliveryAssignment $mission, Order $order, User $courier, array $data): void
@@ -328,6 +365,15 @@ class DeliveryService
             'cash_collected_xof' => $cash,
         ]);
         $this->recordCashCollected($mission, $order, $courier, (int) $cash);
+        // Chaîne du froid : durée hors froid réelle tracée dans l'historique si elle dépasse le seuil paramétré.
+        $max = $this->coldChainMaxMinutes();
+        $outOfCold = $mission->picked_up_at ? (int) $mission->picked_up_at->diffInMinutes(now()) : null;
+        if ($max !== null && $outOfCold !== null && $outOfCold > $max && $order->items()->whereHas('product', fn ($p) => $p->where('requires_cold_chain', true))->exists()) {
+            $this->journal->record($order, 'delivery', $courier, "Remis après {$outOfCold} min hors froid (seuil : {$max} min).", [
+                'event' => 'delivery.cold_chain_exceeded', 'assignment_id' => $mission->id, 'minutes' => $outOfCold, 'max_minutes' => $max,
+            ]);
+            DB::afterCommit(fn () => $this->alertStaff($order, "assignment:{$mission->id}:cold_chain", 'delivery.cold_chain_exceeded', [User::ROLE_RESP_LIVRAISON]));
+        }
         $this->orders->system($order, OrderStatus::Delivered, $courier, null, ['event' => 'delivery.delivered', 'assignment_id' => $mission->id, 'proof_type' => $data['proof_type']]);
         // Remise sans code : acceptée pour ne jamais bloquer un produit frais, mais vérifiée par le commercial.
         if ($codeEnabled && $data['proof_type'] !== 'code') {

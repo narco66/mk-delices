@@ -246,6 +246,7 @@ class BackOfficeController extends Controller
             'business.instagram_url', 'business.facebook_url', 'business.tiktok_url' => ['nullable', 'url:https'],
             'ordering.slot_duration_minutes' => ['required', 'integer', 'min:15', 'max:480'],
             'ordering.slot_capacity' => ['required', 'integer', 'min:1', 'max:500'],
+            'payments.cash_on_delivery_max_xof' => ['nullable', 'integer', 'min:1000', 'max:10000000'],
             'ordering.min_lead_minutes', 'quality.cold_chain_max_minutes' => ['nullable', 'integer', 'min:0', 'max:20160'],
             'ordering.max_days_ahead' => ['required', 'integer', 'min:1', 'max:90'],
             'ordering.cart_ttl_hours' => ['required', 'integer', 'min:1', 'max:720'],

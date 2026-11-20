@@ -40,6 +40,9 @@ class MissionResource extends JsonResource
             'customer_notes' => $inProgress ? $order->customer_notes : null,
             'items' => $order->items->map(fn ($i) => ['name' => $i->product_name_snapshot, 'variant' => $i->variant_label_snapshot, 'qty' => $i->qty, 'storage' => $i->storage_snapshot]),
             'requires_cold_chain' => $order->items->contains(fn ($i) => (bool) $i->product?->requires_cold_chain),
+            // D-QUA-01 : heure limite de remise d'un produit frais enlevé (seuil quality.cold_chain_max_minutes).
+            'cold_chain_deadline_at' => $this->picked_up_at && $order->items->contains(fn ($i) => (bool) $i->product?->requires_cold_chain)
+                && ($max = app(DeliveryService::class)->coldChainMaxMinutes()) ? $this->picked_up_at->copy()->addMinutes($max)->toIso8601ZuluString() : null,
             'cash_to_collect_xof' => $this->cash_to_collect_xof,
             'code_attempts_left' => max(0, DeliveryService::MAX_CODE_ATTEMPTS - (int) $this->code_failed_attempts),
             'partner_fee_xof' => $this->partner_fee_xof,

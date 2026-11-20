@@ -92,6 +92,12 @@ class CheckoutService
             if ($method === null && $available !== [] && ! $staff) {
                 throw DomainException::unprocessable('payment_method_required', 'Veuillez choisir un moyen de paiement.');
             }
+            // D-PAY-04 : au-delà du plafond, pas d'espèces portées par le livreur pour une commande en ligne.
+            // Une commande saisie par l'équipe (téléphone, boutique) reste à l'appréciation du commercial.
+            $codMax = (int) $this->settings->get('payments.cash_on_delivery_max_xof');
+            if (! $staff && $method === GatewayRegistry::CASH_ON_DELIVERY && $codMax > 0 && $quote->total() > $codMax) {
+                throw DomainException::unprocessable('cash_on_delivery_limit', 'Le paiement à la livraison est limité à '.number_format($codMax, 0, ',', ' ').' FCFA. Choisissez un paiement en ligne pour cette commande.', ['max_xof' => $codMax]);
+            }
 
             $slot = $this->slots->reserve((string) $data['slot_start_at'], $quote->leadMinutes, $existing?->id);
             $customer = $this->resolveCustomer($data['customer'], $staff ? null : $user, ! $staff && (bool) ($data['marketing_consent'] ?? false));

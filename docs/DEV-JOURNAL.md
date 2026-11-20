@@ -93,5 +93,16 @@
 - **Site** : messages selon le statut pour les réponses non JSON (502/504/413), délai maximal des requêtes (30 s ; 120 s pour les envois de fichiers), hors ligne, délai d'attente en cas de 429, référence technique aussi lue dans l'en-tête, écran d'erreur avec « Recharger » et filet de sécurité global (`AppErrorBoundary`), plus d'erreur JSON brute du navigateur dans le back-office.
 - **Règles** consignées dans `DEV-CONVENTIONS.md` § « Messages d'erreur ». Tests : `ErrorHandlingTest` (4), `api.test.ts` (+5).
 
+## 20/11/2026 — Décisions bloquées gérées par des paramètres
+- **Analyse** des éléments MVP bloqués :
+  - le numéro WhatsApp était déjà un paramètre ;
+  - l'activation de Wave est un paramètre, mais ses clés restent dans le `.env` (un administrateur pouvant changer la clé pourrait détourner les paiements) ;
+  - Orange Money et la carte demandent une intégration à écrire après contrat, pas un réglage ;
+  - le taux de conversion relève d'un choix d'outil de mesure.
+- **D-QUA-01 chaîne du froid** : le paramètre `quality.cold_chain_max_minutes` (30 min, validé) existait mais n'était **appliqué nulle part**. Désormais : heure limite affichée au livreur, alerte au responsable des livraisons dès le dépassement (`mk:alert-cold-chain`, toutes les 2 min, une alerte par mission), durée hors froid tracée dans l'historique de la commande à la remise.
+- **D-PAY-04 plafond du paiement à la livraison** : nouveau paramètre `payments.cash_on_delivery_max_xof`. Au-delà, la boutique désactive l'option et le serveur refuse ; une commande saisie par l'équipe reste libre.
+- **Démonstration** : trajets réalistes (20 à 30 min hors froid, quelques dépassements volontaires).
+- Tests : `DecisionParametersTest` (4). Backend 191/191, frontend 25/25.
+
 ## Travaux restants (voir rapport final §15)
 Décisions métier/juridiques, contrats PSP, hébergement, sauvegardes, tests de charge, test avec lecteur d'écran, exécution réelle du déploiement et du test de restauration une fois l'hébergeur choisi.

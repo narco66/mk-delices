@@ -430,6 +430,8 @@ export interface Mission {
   customer_notes: string | null
   items: { name: string; variant: string; qty: number; storage: string | null }[]
   requires_cold_chain: boolean
+  /** Heure limite de remise d'un produit frais enlevé (seuil de chaîne du froid paramétré), sinon null. */
+  cold_chain_deadline_at?: string | null
   cash_to_collect_xof: number
   /** Essais de code de remise restants (5 au départ). */
   code_attempts_left: number

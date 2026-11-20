@@ -103,6 +103,8 @@ return [
         'payments.methods' => ['payments', [
             'wave' => false, 'orange_money' => false, 'card' => false, 'cash_on_delivery' => false,
         ], true, true, 'Moyens de paiement activés (aucun contrat marchand validé à ce jour)'],
+        // D-PAY-04 : plafond du paiement à la livraison (espèces portées par le livreur). Null = sans plafond.
+        'payments.cash_on_delivery_max_xof' => ['payments', null, true, true, 'Montant maximal d’une commande payée à la livraison (FCFA), au-delà le paiement en ligne est exigé ; vide = sans plafond'],
         'payments.require_payment_before_acceptance' => ['payments', true, false, true, 'Exiger un paiement confirmé avant acceptation (hors paiement à la livraison)'],
         'policies.cancellation' => ['policies', null, true, true, 'Politique d\'annulation et de remboursement (à rédiger et valider)'],
         // Périmètre desservi (contour GeoJSON) : géré dans Opérations > Zones, pas dans la page Paramètres.

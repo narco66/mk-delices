@@ -49,6 +49,7 @@ const INTEGER_KEYS = [
   'ordering.tracking_token_ttl_days',
   'ordering.max_qty_per_line',
   'quality.cold_chain_max_minutes',
+  'payments.cash_on_delivery_max_xof',
   'delivery.failed_fee_percent',
   'invoicing.vat_rate_percent',
 ]

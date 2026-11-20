@@ -16,6 +16,7 @@ class StaffOrderActivity extends Notification
         'delivery.without_code' => 'Livraison confirmée sans code de remise : à vérifier avec le client',
         'delivery.code_locked' => 'Trop de codes de remise erronés : appeler le livreur',
         'delivery.not_accepted' => 'Mission non acceptée par le livreur : relancer ou réaffecter',
+        'delivery.cold_chain_exceeded' => 'Chaîne du froid : produit frais hors froid au-delà du seuil, appeler le livreur',
         'order.cancelled' => 'Commande annulée',
         'payment.confirmed' => 'Paiement confirmé par le prestataire',
     ];

@@ -503,9 +503,11 @@ class DemoActivitySeeder extends Seeder
         $mission = $deliveries->assign($order->fresh(), $partner, $this->manager);
         $this->travel($slot->subMinutes(50));
         $deliveries->courierAction($mission, $partner->user, 'accept');
-        $this->travel($slot->subMinutes(40));
+        $this->travel($slot->subMinutes(20));
         $deliveries->courierAction($mission, $partner->user, 'pick_up', ['packaging_checked' => true]);
-        $this->travel($slot->addMinutes(mt_rand(5, 70)));
+        // Trajet réaliste (20 à 30 min hors froid) ; environ une livraison sur douze dépasse le seuil de la chaîne
+        // du froid (30 min) pour illustrer l'alerte et la trace dans l'historique.
+        $this->travel($slot->addMinutes(mt_rand(1, 12) === 1 ? mt_rand(15, 25) : mt_rand(0, 9)));
         if ($fail) {
             $deliveries->courierAction($mission, $partner->user, 'fail', [
                 'incident_reason' => $fail, 'incident_note' => 'Incident de démonstration', 'contact_attempted' => true,

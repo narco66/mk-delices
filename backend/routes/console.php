@@ -156,6 +156,8 @@ Schedule::call(fn () => Cache::put(HealthController::SCHEDULER_HEARTBEAT, now()-
 Schedule::command('queue:monitor', ['database:default', '--max' => 50])->everyFiveMinutes();
 // Audit espace livreur E1 : mission proposée restée sans réponse -> alerte au responsable des livraisons.
 Schedule::command('mk:alert-unaccepted-missions')->everyTwoMinutes()->withoutOverlapping(5);
+// D-QUA-01 : produits frais en route au-delà du seuil de la chaîne du froid -> alerte au responsable des livraisons.
+Schedule::command('mk:alert-cold-chain')->everyTwoMinutes()->withoutOverlapping(5);
 
 /**
  * Vérification « prêt pour la production » (docs/11-DEPLOYMENT/GO-NO-GO-PRODUCTION.md) : contrôle, SANS RIEN
@@ -317,6 +319,11 @@ Artisan::command('mk:issue-invoices {--dry-run : Afficher sans émettre}', funct
 
     return 0;
 })->purpose('Émettre les factures dues qui ne l\'ont pas encore été');
+
+/** Signale au responsable des livraisons les produits frais en route au-delà du seuil de la chaîne du froid (planifiée). */
+Artisan::command('mk:alert-cold-chain', function (DeliveryService $deliveries) {
+    $this->info($deliveries->alertColdChainBreaches().' alerte(s) envoyée(s).');
+})->purpose('Alerter quand un produit frais dépasse la durée maximale hors froid');
 
 /** Signale au responsable des livraisons les missions proposées restées sans réponse (planifiée). */
 Artisan::command('mk:alert-unaccepted-missions', function (DeliveryService $deliveries) {

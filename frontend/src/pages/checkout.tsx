@@ -288,6 +288,14 @@ export function CheckoutPage() {
   const quote = quoteQuery.data
   // Devis en cours de recalcul (zone, position ou panier modifiés) : le total affiché n'est pas encore le bon.
   const quoteRefreshing = quoteQuery.isFetching || quoteQuery.isPlaceholderData
+  // D-PAY-04 : plafond du paiement à la livraison (paramètre) ; au-delà, seul le paiement en ligne est proposé.
+  const codMax = Number(config?.settings['payments.cash_on_delivery_max_xof'] ?? 0)
+  const isBlocked = (code: string) => code === 'cash_on_delivery' && codMax > 0 && (quote?.total_xof ?? 0) > codMax
+  useEffect(() => {
+    const allowed = methods.find((m) => !isBlocked(m.code))
+    if (method && isBlocked(method) && allowed) setValue('payment_method', allowed.code)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- isBlocked dépend de codMax et du total, listés ici
+  }, [method, methods, codMax, quote?.total_xof, setValue])
   const slots = useMemo(() => quote?.slots ?? [], [quote])
 
   // Adresse par défaut du client présélectionnée une seule fois (modifiable ensuite).
@@ -581,11 +589,19 @@ export function CheckoutPage() {
             ) : (
               <div className="grid gap-2 sm:grid-cols-2" role="radiogroup" aria-label="Moyen de paiement">
                 {methods.map((m) => (
-                  <label key={m.code} className={cn('flex min-h-14 cursor-pointer items-center gap-3 rounded-[var(--radius-control)] border-2 bg-white px-4 py-3', method === m.code ? 'border-cocoa-700 shadow-soft' : 'border-cocoa-100')}>
-                    <input type="radio" value={m.code} {...register('payment_method')} className="size-4 accent-cocoa-700" />
+                  <label key={m.code} className={cn('flex min-h-14 items-center gap-3 rounded-[var(--radius-control)] border-2 bg-white px-4 py-3', isBlocked(m.code) ? 'cursor-not-allowed opacity-60' : 'cursor-pointer', method === m.code ? 'border-cocoa-700 shadow-soft' : 'border-cocoa-100')}>
+                    <input type="radio" value={m.code} disabled={isBlocked(m.code)} {...register('payment_method')} className="size-4 accent-cocoa-700" />
                     <span>
                       <span className="block font-medium">{PAYMENT_LABELS[m.code] ?? m.label}</span>
-                      <span className="text-xs text-cocoa-500">{m.test_only ? 'Environnement de test — aucun débit réel' : m.online ? 'Paiement sécurisé chez le prestataire' : 'Règlement à la remise'}</span>
+                      <span className="text-xs text-cocoa-500">
+                        {isBlocked(m.code)
+                          ? `Limité aux commandes de ${formatXof(codMax)} maximum`
+                          : m.test_only
+                            ? 'Environnement de test — aucun débit réel'
+                            : m.online
+                              ? 'Paiement sécurisé chez le prestataire'
+                              : 'Règlement à la remise'}
+                      </span>
                     </span>
                   </label>
                 ))}

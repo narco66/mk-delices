@@ -11,7 +11,7 @@ import { Card, Modal, StatusPill } from '@/components/ui/Display'
 import { ErrorState, errorMessage, Notice, Skeleton } from '@/components/ui/Feedback'
 import { Checkbox, Field, Input, Select, Textarea } from '@/components/ui/Form'
 import { api, ApiError } from '@/lib/api'
-import { formatDateTime, formatSlot, formatXof } from '@/lib/format'
+import { formatDateTime, formatSlot, formatTime, formatXof } from '@/lib/format'
 import type { Mission } from '@/types/api'
 import { CONDITION_LABELS, INCIDENT_LABELS, PROOF_LABELS } from '../admin/orders/labels'
 import { mapsUrl, useCourierOverview } from './useCourier'
@@ -91,6 +91,9 @@ export function MissionDetailPage() {
           <span className="inline-flex items-center gap-1">
             <Snowflake className="size-4" /> Gardez la commande au frais et livrez sans détour.
           </span>
+          {mission.cold_chain_deadline_at && mission.status === 'picked_up' && (
+            <strong className="mt-1 block">À remettre au client avant {formatTime(mission.cold_chain_deadline_at)}.</strong>
+          )}
         </Notice>
       )}
       {mission.status === 'proposed' && <Notice>L'adresse complète et le téléphone du destinataire s'affichent dès que vous acceptez la mission.</Notice>}

@@ -38,22 +38,20 @@ test('Catalogue : créer, illustrer, publier puis désactiver un produit', async
   await page.getByRole('textbox', { name: 'SKU', exact: true }).first().fill(`E2E-${id}`)
   await page.getByRole('textbox', { name: 'Libellé', exact: true }).first().fill('Coupe test')
   await page.getByRole('textbox', { name: 'Prix (FCFA)', exact: true }).first().fill('3500')
-  await page.getByRole('button', { name: 'Créer le produit' }).click()
+
+  // Photo choisie DÈS la création (aperçu, texte alternatif), envoyée avec le produit, ré-encodée par le serveur.
+  await page.getByLabel('Choisir des photos du produit').setInputFiles(photo)
+  await expect(page.getByText('En attente · principale')).toBeVisible()
+  await page.getByLabel('Texte alternatif de tiramisu-test.jpg').fill(`${name} en coupe`)
+  await page.getByRole('button', { name: 'Créer le produit et envoyer 1 photo(s)' }).click()
   await expect(page).toHaveURL(/\/admin\/catalogue\/[0-9a-f-]{36}$/)
+  await expect(page.getByRole('img', { name: `${name} en coupe` })).toBeVisible()
+  await expect(page.getByText('Principale')).toBeVisible()
   await noHorizontalOverflow(page)
 
   // Brouillon : invisible du public.
   const status = await page.request.get(`/api/v1/catalog/products/${slug}`)
   expect(status.status()).toBe(404)
-
-  // Photo : téléversement contrôlé et ré-encodé côté serveur.
-  await page.getByRole('button', { name: 'Ajouter', exact: true }).click()
-  const dialog = page.getByRole('dialog')
-  await dialog.getByLabel(/^Fichier image/).setInputFiles(photo)
-  await dialog.getByRole('textbox', { name: 'Texte alternatif', exact: true }).fill(`${name} en coupe`)
-  await dialog.getByRole('button', { name: 'Téléverser' }).click()
-  await expect(dialog).toBeHidden()
-  await expect(page.getByRole('img', { name: `${name} en coupe` })).toBeVisible()
 
   // Publication → visible et commandable ; désactivation → retiré.
   await page.getByRole('button', { name: 'Publier' }).click()

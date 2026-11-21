@@ -1,19 +1,21 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, ImagePlus, Plus, Trash2 } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Controller, useFieldArray, useForm, useWatch } from 'react-hook-form'
 import { Link, useNavigate, useParams } from 'react-router'
 import { toast } from 'sonner'
 import { z } from 'zod'
 import { Button } from '@/components/ui/Button'
-import { Badge, Card, Modal, PageHeader, StatusPill } from '@/components/ui/Display'
+import { Badge, Card, PageHeader, StatusPill } from '@/components/ui/Display'
 import { ErrorState, errorMessage, Notice, Spinner } from '@/components/ui/Feedback'
 import { Checkbox, Field, Input, Select, Textarea } from '@/components/ui/Form'
 import { api } from '@/lib/api'
 import { allergenLabel } from '@/lib/format'
 import type { Paginated, Product } from '@/types/api'
 import { PRODUCT_STATUS_LABELS } from './labels'
+import { type StagedPhoto, uploadPhoto } from './photos'
+import { PhotoPicker, ProductPhotos } from './ProductPhotos'
 import { CharCount, TagInput, Toggle } from './shared'
 import { applyServerErrors, toNullableInt } from './utils'
 import { useAdminCategories } from './useAdminCategories'
@@ -150,15 +152,34 @@ export function ProductEditPage() {
     if (product) reset(toForm(product))
   }, [product, reset])
 
+  // Photos choisies avant la création du produit : envoyées juste après sa création.
+  const [newPhotos, setNewPhotos] = useState<StagedPhoto[]>([])
   const save = useMutation({
-    mutationFn: (values: FormValues) =>
-      isNew ? api.post<{ data: Product }>('/admin/products', toPayload(values)) : api.patch<{ data: Product }>(`/admin/products/${id}`, toPayload(values)),
-    onSuccess: (res) => {
-      toast.success(isNew ? 'Produit créé (brouillon)' : 'Produit enregistré')
+    mutationFn: async (values: FormValues) => {
+      if (!isNew) return { res: await api.patch<{ data: Product }>(`/admin/products/${id}`, toPayload(values)), failures: [] as string[] }
+      const res = await api.post<{ data: Product }>('/admin/products', toPayload(values))
+      const failures: string[] = []
+      for (const [i, photo] of newPhotos.entries()) {
+        try {
+          await uploadPhoto(res.data.id, photo, `${res.data.name} (photo ${i + 1})`)
+        } catch (err) {
+          failures.push(`${photo.file.name} : ${errorMessage(err)}`)
+        }
+      }
+      return { res, failures }
+    },
+    onSuccess: ({ res, failures }) => {
+      const sent = isNew ? newPhotos.length - failures.length : 0
+      toast.success(isNew ? `Produit créé (brouillon)${sent > 0 ? ` avec ${sent} photo(s)` : ''}` : 'Produit enregistré')
+      failures.forEach((f) => toast.error(`Photo non envoyée — ${f}`))
       queryClient.invalidateQueries({ queryKey: ['admin', 'products'] })
-      queryClient.setQueryData(['admin', 'product', res.data.id], res.data)
-      if (isNew) navigate(`/admin/catalogue/${res.data.id}`, { replace: true })
-      else reset(toForm(res.data))
+      if (isNew) {
+        queryClient.invalidateQueries({ queryKey: ['admin', 'product', res.data.id] })
+        navigate(`/admin/catalogue/${res.data.id}`, { replace: true })
+      } else {
+        queryClient.setQueryData(['admin', 'product', res.data.id], res.data)
+        reset(toForm(res.data))
+      }
     },
     onError: (e) => applyServerErrors(e, setError),
   })
@@ -248,6 +269,16 @@ export function ProductEditPage() {
             </Field>
           </Card>
 
+          {isNew ? (
+            <Card className="space-y-4 p-5">
+              <h2 className="text-lg font-semibold">Photos</h2>
+              <p className="text-sm text-cocoa-500">Les photos choisies ici sont envoyées dès la création du produit. La première sera la photo principale.</p>
+              <PhotoPicker photos={newPhotos} onChange={setNewPhotos} disabled={save.isPending} />
+            </Card>
+          ) : (
+            product && <ProductPhotos product={product} />
+          )}
+
           <Card className="space-y-4 p-5">
             <h2 className="text-lg font-semibold">Composition, allergènes et conservation</h2>
             <Notice>Ingrédients et allergènes sont affichés avant l'ajout au panier ; ils sont obligatoires pour publier (CAT-001).</Notice>
@@ -336,7 +367,6 @@ export function ProductEditPage() {
             })}
           </Card>
 
-          {!isNew && product && <ImageManager product={product} />}
         </div>
 
         <div className="space-y-6">
@@ -388,114 +418,12 @@ export function ProductEditPage() {
 
           <div className="sticky bottom-4 space-y-2">
             <Button type="submit" size="lg" className="w-full" loading={save.isPending} disabled={!isNew && !formState.isDirty}>
-              {isNew ? 'Créer le produit' : 'Enregistrer'}
+              {isNew ? (newPhotos.length ? `Créer le produit et envoyer ${newPhotos.length} photo(s)` : 'Créer le produit') : 'Enregistrer'}
             </Button>
             {allergens.length > 0 && <p className="text-center text-xs text-cocoa-500">Allergènes : {allergens.map(allergenLabel).join(', ')}</p>}
           </div>
         </div>
       </form>
     </div>
-  )
-}
-
-function ImageManager({ product }: { product: Product }) {
-  const queryClient = useQueryClient()
-  const [open, setOpen] = useState(false)
-  const [file, setFile] = useState<File | null>(null)
-  const [alt, setAlt] = useState('')
-  const [illustrative, setIllustrative] = useState(false)
-  const refresh = () => queryClient.invalidateQueries({ queryKey: ['admin', 'product', product.id] })
-
-  const upload = useMutation({
-    mutationFn: () => {
-      const fd = new FormData()
-      fd.append('image', file as File)
-      fd.append('alt', alt)
-      fd.append('is_illustrative', illustrative ? '1' : '0')
-      return api.post(`/admin/products/${product.id}/images`, fd)
-    },
-    onSuccess: () => {
-      toast.success('Image ajoutée (convertie en WebP, métadonnées supprimées)')
-      setOpen(false)
-      setFile(null)
-      setAlt('')
-      refresh()
-    },
-    onError: (e) => toast.error(errorMessage(e)),
-  })
-  const updateAlt = useMutation({
-    mutationFn: ({ imageId, alt }: { imageId: string; alt: string }) => api.patch(`/admin/products/${product.id}/images/${imageId}`, { alt }),
-    onSuccess: () => {
-      toast.success('Texte alternatif mis à jour')
-      refresh()
-    },
-    onError: (e) => toast.error(errorMessage(e)),
-  })
-  const remove = useMutation({
-    mutationFn: (imageId: string) => api.delete(`/admin/products/${product.id}/images/${imageId}`),
-    onSuccess: () => {
-      toast.success('Image supprimée')
-      refresh()
-    },
-    onError: (e) => toast.error(errorMessage(e)),
-  })
-
-  return (
-    <Card className="space-y-4 p-5">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-lg font-semibold">Photos</h2>
-        <Button type="button" size="sm" variant="secondary" icon={<ImagePlus className="size-4" />} onClick={() => setOpen(true)}>
-          Ajouter
-        </Button>
-      </div>
-      <p className="text-xs text-cocoa-500">JPEG, PNG ou WebP, 400 à 8000 px, 6 Mo max. Les photos doivent appartenir à MK Délices ou être sous licence.</p>
-      {(product.images ?? []).length === 0 ? (
-        <p className="rounded-[var(--radius-control)] bg-cream-100 px-4 py-6 text-center text-sm text-cocoa-500">Aucune photo : une illustration est affichée en boutique.</p>
-      ) : (
-        <ul className="grid gap-3 sm:grid-cols-2">
-          {product.images!.map((img) => (
-            <li key={img.id} className="overflow-hidden rounded-[var(--radius-control)] border border-cocoa-100">
-              <img src={img.url} alt={img.alt} className="aspect-[4/3] w-full object-cover" loading="lazy" />
-              <div className="space-y-2 p-3">
-                {img.is_illustrative && <Badge tone="warning">Photo d'illustration</Badge>}
-                <Input
-                  aria-label="Texte alternatif"
-                  defaultValue={img.alt}
-                  onBlur={(ev) => ev.target.value !== img.alt && ev.target.value.length >= 3 && updateAlt.mutate({ imageId: img.id, alt: ev.target.value })}
-                />
-                <Button type="button" size="sm" variant="ghost" icon={<Trash2 className="size-4" />} onClick={() => remove.mutate(img.id)} loading={remove.isPending && remove.variables === img.id}>
-                  Supprimer
-                </Button>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-      <Modal
-        open={open}
-        onOpenChange={setOpen}
-        title="Ajouter une photo"
-        footer={
-          <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setOpen(false)}>
-              Annuler
-            </Button>
-            <Button loading={upload.isPending} disabled={!file || alt.trim().length < 3} onClick={() => upload.mutate()}>
-              Téléverser
-            </Button>
-          </div>
-        }
-      >
-        <div className="space-y-4">
-          <Field label="Fichier image" required>
-            {(p) => <Input {...p} type="file" accept="image/jpeg,image/png,image/webp" onChange={(ev) => setFile(ev.target.files?.[0] ?? null)} />}
-          </Field>
-          <Field label="Texte alternatif" required hint="Décrit l'image pour les lecteurs d'écran (3 caractères min.)">
-            {(p) => <Input {...p} value={alt} onChange={(ev) => setAlt(ev.target.value)} placeholder="Tiramisu classique en coupe individuelle" />}
-          </Field>
-          <Checkbox label="Photo d'illustration (ne représente pas exactement le produit vendu)" checked={illustrative} onChange={(ev) => setIllustrative(ev.target.checked)} />
-        </div>
-      </Modal>
-    </Card>
   )
 }

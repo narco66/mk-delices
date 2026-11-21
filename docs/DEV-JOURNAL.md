@@ -140,5 +140,12 @@
 - **Préproduction** : les journaux montrent que l'application mobile n'y passe pas la protection par mot de passe (401). Il faut ajouter son adresse IP à la liste blanche nginx (`API-MOBILE.md`).
 - **Tests** : configuration de test isolée de la configuration MapTiler du `.env` local (`phpunit.xml`), pour qu'aucun test n'appelle réellement le fournisseur. Backend 192/192.
 
+## 21/11/2026 — Photos dans la fiche produit (back-office)
+- **Problème** : à la création d'un produit, aucun emplacement pour les photos ; il fallait créer le produit, puis ouvrir une fenêtre en bas de page et envoyer une photo à la fois.
+- **Correction** : bloc « Photos » juste après « Informations », en création comme en modification. Glisser-déposer ou choix de plusieurs fichiers, aperçu, texte alternatif et case « Photo d'illustration ». Les fichiers sont contrôlés avant l'envoi : format, poids et dimensions.
+- **Envoi** : à la création, les photos partent avec le produit (« Créer le produit et envoyer N photo(s) »). Un échec de photo n'annule pas la création et est signalé.
+- **En modification** : badge « Principale », « Mettre en premier », texte alternatif modifiable, suppression confirmée.
+- **Tests** : Vitest 29/29 et E2E catalogue (création avec photo) au vert.
+
 ## Travaux restants (voir rapport final §15)
 Décisions métier/juridiques, contrats PSP, hébergement, sauvegardes, tests de charge, test avec lecteur d'écran, exécution réelle du déploiement et du test de restauration une fois l'hébergeur choisi.

@@ -10,8 +10,10 @@ L'application mobile utilise **la même API REST que le site** (`/api/v1`) : mê
 | Environnement | URL de base |
 |---|---|
 | Préproduction | `https://preprod.mk-delices.tech/api/v1` (depuis le 20/11/2026 ; l'ancienne adresse `srv2163043.hstgr.cloud` redirige) — le site est protégé par un mot de passe d'accès qui utilise lui aussi l'en-tête `Authorization`, incompatible avec le jeton `Bearer`. L'équipe mobile communique donc **l'adresse IP publique** de ses postes / réseau de test, ajoutée à la liste blanche Nginx (`allow …;` dans `mk-delices-staging.conf`) |
-| Production | `https://<domaine définitif>/api/v1` |
-| Poste de développement | `http://<IP du poste>:8000/api/v1` (`php artisan serve --host=0.0.0.0`) |
+| Production | `https://mk-delices.com/api/v1` (domaine retenu ; pas encore ouvert) |
+| Poste de développement | Émulateur Android : `http://10.0.2.2:8000/api/v1`. Téléphone physique : `http://<IP du poste>:8000/api/v1`, avec l'API lancée par `php artisan serve --host=0.0.0.0` (le script `start-dev.ps1` l'écoute seulement sur `127.0.0.1`) et le port 8000 ouvert dans le pare-feu Windows |
+
+**Images** : les adresses d'image (`images[].url`, `srcset`) sont absolues et construites sur l'hôte appelé par l'application. Elles sont donc joignables depuis le téléphone, quelle que soit l'adresse utilisée (correction du 21/11/2026 : elles valaient auparavant `http://localhost:8000/…`). En préproduction, les images sont protégées par le même mot de passe d'accès que l'API : elles ne s'affichent que si l'adresse IP de l'application est dans la liste blanche.
 
 En-têtes de chaque requête : `Accept: application/json`, `Content-Type: application/json` (sauf envoi de fichier), et `Authorization: Bearer <jeton>` une fois connecté.
 **Ne jamais envoyer d'en-tête `Origin`/`Referer` du site** : l'API traiterait la requête comme venant du site web (session + CSRF).

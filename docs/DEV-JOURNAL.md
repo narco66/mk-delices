@@ -134,5 +134,11 @@
 - **Vérifié dans le navigateur en préproduction** : 8 images chargées, 8 badges.
 - Crédits, licences, limites et photos de secours : `propositions/CREDITS-PHOTOS-ILLUSTRATION.md`. À remplacer par les vraies photos avant l'ouverture (D-BRAND-02).
 
+## 21/11/2026 — Images invisibles dans l'application mobile
+- **Cause** : l'API renvoyait des adresses d'image fondées sur `APP_URL` (`http://localhost:8000/…` en local). Depuis un téléphone ou un émulateur, « localhost » désigne l'appareil lui-même.
+- **Correction** : `ProductImage::url()` construit l'adresse sur l'hôte réellement appelé (`url()`), par exemple `http://10.0.2.2:8000/storage/…` pour l'émulateur Android. Vérifié en conditions réelles (image WebP servie) et testé (`MobileApiTest`).
+- **Préproduction** : les journaux montrent que l'application mobile n'y passe pas la protection par mot de passe (401). Il faut ajouter son adresse IP à la liste blanche nginx (`API-MOBILE.md`).
+- **Tests** : configuration de test isolée de la configuration MapTiler du `.env` local (`phpunit.xml`), pour qu'aucun test n'appelle réellement le fournisseur. Backend 192/192.
+
 ## Travaux restants (voir rapport final §15)
 Décisions métier/juridiques, contrats PSP, hébergement, sauvegardes, tests de charge, test avec lecteur d'écran, exécution réelle du déploiement et du test de restauration une fois l'hébergeur choisi.

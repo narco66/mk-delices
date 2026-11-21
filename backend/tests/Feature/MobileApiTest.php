@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Order;
+use App\Models\ProductImage;
 use App\Models\User;
 use Illuminate\Routing\Middleware\ThrottleRequests;
 use Illuminate\Support\Str;
@@ -45,6 +46,24 @@ class MobileApiTest extends TestCase
         ])->assertCreated();
 
         return User::query()->where('email', 'aminata@example.test')->firstOrFail();
+    }
+
+    /** 21/11/2026 : l'application mobile reçoit des adresses d'image joignables depuis le téléphone. */
+    public function test_product_image_urls_use_the_host_the_client_called(): void
+    {
+        $product = $this->variant()->product;
+        ProductImage::query()->create([
+            'product_id' => $product->id, 'path' => "products/{$product->id}/photo-lg.webp", 'alt' => 'Photo',
+            'variants' => ['sm' => "products/{$product->id}/photo-sm.webp", 'lg' => "products/{$product->id}/photo-lg.webp"],
+            'width' => 1600, 'height' => 1600, 'sort_order' => 1, 'is_illustrative' => true,
+        ]);
+
+        // Émulateur Android (10.0.2.2) ou téléphone sur le réseau local : jamais « localhost ».
+        $image = $this->getJson("http://10.0.2.2:8000/api/v1/catalog/products/{$product->slug}")->assertOk()->json('data.images.0');
+        $this->assertSame("http://10.0.2.2:8000/storage/products/{$product->id}/photo-lg.webp", $image['url']);
+        $this->assertStringContainsString("http://10.0.2.2:8000/storage/products/{$product->id}/photo-sm.webp 480w", $image['srcset']);
+
+        $this->assertStringStartsWith('https://preprod.mk-delices.tech/storage/', $this->getJson("https://preprod.mk-delices.tech/api/v1/catalog/products/{$product->slug}")->json('data.images.0.url'));
     }
 
     public function test_token_login_me_and_logout_without_cookies_or_csrf(): void

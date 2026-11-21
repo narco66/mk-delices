@@ -29,6 +29,10 @@
         <env name="PAYMENTS_SIMULATOR_SECRET" value="test-simulator-secret"/>
         <env name="DB_URL" value=""/>
         <env name="MAIL_MAILER" value="array"/>
+        <!-- Cartes : jamais la configuration MapTiler du .env (ni appel réel, ni quota consommé) ; les tests simulent le fournisseur. -->
+        <env name="MAPS_TILES_URL" value=""/>
+        <env name="MAPS_GEOCODER" value="none"/>
+        <env name="MAPS_GEOCODER_KEY" value=""/>
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>
         <env name="PULSE_ENABLED" value="false"/>

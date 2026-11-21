@@ -128,5 +128,11 @@
   - vérifié : HTTPS, mot de passe d'accès, connexion réelle au back-office, santé, carte.
 - `mk-delices.com` et `mk-delices.tech` restent sur la page de parking jusqu'à l'ouverture de la production.
 
+## 21/11/2026 — Photos d'illustration du catalogue
+- **Ajout** d'une photo libre de droits (Pexels, licence vérifiée) aux 8 produits du catalogue, qui n'avaient aucune photo. Badge « Photo d'illustration », poste local et préproduction.
+- **Contrôle** de chaque photo en pleine taille : ni personne, ni marque, ni texte. Une photo recadrée pour exclure une main.
+- **Vérifié dans le navigateur en préproduction** : 8 images chargées, 8 badges.
+- Crédits, licences, limites et photos de secours : `propositions/CREDITS-PHOTOS-ILLUSTRATION.md`. À remplacer par les vraies photos avant l'ouverture (D-BRAND-02).
+
 ## Travaux restants (voir rapport final §15)
 Décisions métier/juridiques, contrats PSP, hébergement, sauvegardes, tests de charge, test avec lecteur d'écran, exécution réelle du déploiement et du test de restauration une fois l'hébergeur choisi.

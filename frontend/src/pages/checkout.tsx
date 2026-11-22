@@ -582,6 +582,11 @@ export function CheckoutPage() {
             <h2 className="mb-4 flex items-center gap-2 text-xl font-semibold">
               <CreditCard className="size-5 text-caramel-600" aria-hidden /> 4. Paiement
             </h2>
+            {config?.online_payment?.notice && methods.length > 0 && (
+              <Notice tone="info" className="mb-3">
+                {config.online_payment.notice}
+              </Notice>
+            )}
             {methods.length === 0 ? (
               <Notice tone="info" title="Paiement à convenir">
                 Le paiement en ligne n'est pas encore ouvert. MK Délices vous contactera pour confirmer la commande et le règlement.

@@ -127,7 +127,14 @@ export interface CartState extends Quote {
   expires_at: string
   converted_order: { reference: string; status: string } | null
   item_count: number
+  /** « Recommander » : articles devenus indisponibles, non ajoutés. */
+  skipped?: { name: string; quantity: number; reason: string }[]
 }
+
+/** Club MK : carte de fidélité à tampons (une récompense toutes les N commandes livrées). */
+export type LoyaltyCard =
+  | { enabled: false }
+  | { enabled: true; delivered_orders: number; orders_per_reward: number; stamps: number; remaining: number; rewards_earned: number; reward_label: string }
 
 export interface Zone {
   id: string
@@ -158,6 +165,9 @@ export interface PaymentMethod {
 export interface PublicConfig {
   settings: Record<string, unknown>
   payment_methods: PaymentMethod[]
+  /** Paiement en ligne réel (Wave, Orange Money, carte) suspendu : message à afficher. */
+  online_payment?: { enabled: boolean; notice: string | null }
+  push?: { mobile: boolean }
   currency: 'XOF'
   timezone: string
   maps?: MapsConfig

@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\V1\CatalogController;
 use App\Http\Controllers\Api\V1\CheckoutController;
 use App\Http\Controllers\Api\V1\ContentController;
 use App\Http\Controllers\Api\V1\Courier\MissionController;
+use App\Http\Controllers\Api\V1\DeviceController;
 use App\Http\Controllers\Api\V1\GeoController;
 use App\Http\Controllers\Api\V1\OrderTrackingController;
 use App\Http\Controllers\Api\V1\PaymentSimulatorController;
@@ -73,6 +74,9 @@ Route::middleware('throttle:api')->group(function () {
     Route::post('auth/register', [AuthController::class, 'register'])->middleware('throttle:login');
     // ---- Application mobile : jeton d'accès par appareil (Authorization: Bearer) --------------
     Route::post('auth/token', [AuthController::class, 'issueToken'])->middleware('throttle:login');
+    // ---- Mot de passe oublié (site et application) : lien par email vers la page du site -------
+    Route::post('auth/forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:password-reset');
+    Route::post('auth/reset-password', [AuthController::class, 'resetPassword'])->middleware('throttle:password-reset');
 
     Route::middleware(['auth:sanctum', 'active'])->group(function () {
         Route::post('auth/logout', [AuthController::class, 'logout']);
@@ -80,9 +84,19 @@ Route::middleware('throttle:api')->group(function () {
         Route::get('auth/tokens', [AuthController::class, 'tokens']);
         Route::delete('auth/tokens/{id}', [AuthController::class, 'revokeToken'])->whereNumber('id');
 
+        // Téléphones enregistrés pour les notifications push (clients et livreurs)
+        Route::post('account/devices', [DeviceController::class, 'store'])->middleware('throttle:20,1');
+        Route::delete('account/devices/{id}', [DeviceController::class, 'destroy']);
+
         // Espace client
         Route::prefix('account')->group(function () {
+            Route::delete('/', [AccountController::class, 'destroy'])->middleware('throttle:5,1');
             Route::get('orders', [AccountController::class, 'orders']);
+            Route::post('orders/{ref}/reorder', [CartController::class, 'reorder'])->middleware('throttle:cart');
+            Route::get('loyalty', [AccountController::class, 'loyalty']);
+            Route::get('favorites', [AccountController::class, 'favorites']);
+            Route::post('favorites', [AccountController::class, 'addFavorite'])->middleware('throttle:60,1');
+            Route::delete('favorites/{id}', [AccountController::class, 'removeFavorite']);
             Route::put('profile', [AccountController::class, 'updateProfile']);
             Route::get('addresses', [AccountController::class, 'addresses']);
             Route::post('addresses', [AccountController::class, 'storeAddress']);

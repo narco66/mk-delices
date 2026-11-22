@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1\Admin;
 
+use App\Domain\Customers\LoyaltyService;
 use App\Domain\Reporting\StatsService;
 use App\Domain\Shared\AuditLogger;
 use App\Domain\Shared\DomainException;
@@ -70,7 +71,8 @@ class BackOfficeController extends Controller
         $customer = Customer::query()->with(['addresses.zone:id,name', 'user:id,email'])->findOrFail($id);
         $orders = OrderResource::collection($customer->orders()->latest()->limit(50)->get())->resolve();
 
-        return response()->json(['data' => $customer->toArray() + ['orders' => $orders]]);
+        // Club MK : l'équipe voit quand une surprise est due (remise manuelle, pas de remise automatique).
+        return response()->json(['data' => $customer->toArray() + ['orders' => $orders, 'loyalty' => app(LoyaltyService::class)->card($customer)]]);
     }
 
     // ---- Avis --------------------------------------------------------------------------------
@@ -252,7 +254,9 @@ class BackOfficeController extends Controller
             'ordering.cart_ttl_hours' => ['required', 'integer', 'min:1', 'max:720'],
             'ordering.tracking_token_ttl_days' => ['required', 'integer', 'min:1', 'max:365'],
             'ordering.max_qty_per_line' => ['required', 'integer', 'min:1', 'max:500'],
-            'ordering.pickup_enabled', 'payments.require_payment_before_acceptance' => ['required', 'boolean'],
+            'ordering.pickup_enabled', 'payments.require_payment_before_acceptance', 'payments.online_enabled', 'loyalty.enabled' => ['required', 'boolean'],
+            'loyalty.orders_per_reward' => ['required', 'integer', 'min:2', 'max:50'],
+            'loyalty.reward_label' => ['required', 'string', 'min:3', 'max:120'],
             'payments.methods' => ['required', 'array:wave,orange_money,card,cash_on_delivery'],
             'business.hours' => ['required', 'array:mon,tue,wed,thu,fri,sat,sun'],
             'ordering.closed_dates', 'delivery.proof_types', 'delivery.incident_reasons', 'delivery.client_fault_reasons' => ['present', 'array'],

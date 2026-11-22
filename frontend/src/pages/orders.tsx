@@ -194,7 +194,7 @@ export function PaymentPage() {
         )}
         {online.length === 0 ? (
           <Notice tone="warning" className="mt-5" title="Paiement en ligne indisponible">
-            Aucun moyen de paiement en ligne n'est actif pour le moment. MK Délices vous contactera pour le règlement.
+            {config?.online_payment?.notice ?? "Aucun moyen de paiement en ligne n'est actif pour le moment."} MK Délices vous contactera pour le règlement.
           </Notice>
         ) : (
           <div className="mt-5 grid gap-2" role="radiogroup" aria-label="Moyen de paiement">

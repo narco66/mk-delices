@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Domain\Customers\Push\FcmTransport;
+use App\Domain\Customers\Push\MobilePushTransport;
 use App\Domain\Deliveries\Push\PushTransport;
 use App\Domain\Deliveries\Push\WebPushTransport;
 use App\Domain\Geo\Geocoder;
@@ -28,6 +30,7 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->app->singleton(Settings::class);
         $this->app->bind(PushTransport::class, WebPushTransport::class);
+        $this->app->bind(MobilePushTransport::class, FcmTransport::class);
         // Fournisseur de géocodage choisi par configuration (DEC-GEO-01) ; inactif sans clé.
         $this->app->bind(Geocoder::class, fn () => config('mkdelices.maps.geocoder') === 'maptiler' && filled(config('mkdelices.maps.geocoder_key'))
             ? new MapTilerGeocoder : new NullGeocoder);
@@ -50,8 +53,13 @@ class AppServiceProvider extends ServiceProvider
         $key = fn (Request $r) => $r->user()?->id ?: $r->ip();
         RateLimiter::for('api', fn (Request $r) => Limit::perMinute(120)->by($key($r)));
         RateLimiter::for('login', fn (Request $r) => [
-            Limit::perMinute(5)->by(mb_strtolower((string) $r->input('email')).'|'.$r->ip()),
+            Limit::perMinute(5)->by(mb_strtolower((string) ($r->input('login') ?? $r->input('email') ?? $r->input('phone'))).'|'.$r->ip()),
             Limit::perMinute(20)->by($r->ip()),
+        ]);
+        // Mot de passe oublié : peu de demandes par adresse et par IP (pas d'envoi massif d'emails).
+        RateLimiter::for('password-reset', fn (Request $r) => [
+            Limit::perMinute(5)->by(mb_strtolower((string) $r->input('email')).'|'.$r->ip()),
+            Limit::perHour(20)->by($r->ip()),
         ]);
         RateLimiter::for('cart', fn (Request $r) => Limit::perMinute(60)->by($key($r)));
         RateLimiter::for('checkout', fn (Request $r) => Limit::perMinute(20)->by($key($r)));

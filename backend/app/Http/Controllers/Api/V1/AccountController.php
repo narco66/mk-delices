@@ -2,23 +2,34 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Domain\Customers\LoyaltyService;
 use App\Domain\Geo\GeoPoint;
 use App\Domain\Geo\ZoneLocator;
+use App\Domain\Orders\OrderStatus;
+use App\Domain\Shared\AuditLogger;
 use App\Domain\Shared\DomainException;
 use App\Domain\Shared\Phone;
 use App\Http\Controllers\Controller;
+use App\Http\Resources\ProductResource;
 use App\Http\Resources\PublicOrderResource;
 use App\Models\Address;
 use App\Models\Customer;
+use App\Models\Product;
+use App\Models\Review;
+use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 
 /** Espace client (compte facultatif) : uniquement ses propres données. */
 class AccountController extends Controller
 {
+    public function __construct(private readonly AuditLogger $audit) {}
+
     public function orders(Request $request): AnonymousResourceCollection
     {
         $orders = $this->customer($request)->orders()->where('status', '!=', 'draft')->with('items', 'invoices')->latest()->paginate(20);
@@ -38,6 +49,7 @@ class AccountController extends Controller
             'preferences.favorite_flavors.*' => ['string', 'max:40'],
         ]);
         $phone = Phone::normalizeSenegal($data['phone']) ?? throw DomainException::unprocessable('invalid_phone', 'Numéro de téléphone sénégalais invalide.');
+        AuthController::assertPhoneFree($phone, $request->user()->id);
         $customer = $this->customer($request);
         $customer->update([
             'first_name' => $data['first_name'],
@@ -148,6 +160,100 @@ class AccountController extends Controller
 
         return $data;
     }
+
+    // ---- Favoris ---------------------------------------------------------------------------------
+
+    /** Produits favoris encore visibles en boutique (un produit retiré disparaît de la liste sans erreur). */
+    public function favorites(Request $request): AnonymousResourceCollection
+    {
+        $products = $request->user()->favoriteProducts()->publiclyVisible()
+            ->with(['category', 'variants', 'images'])->orderByPivot('created_at', 'desc')->get();
+
+        return ProductResource::collection($products);
+    }
+
+    public function addFavorite(Request $request): JsonResponse
+    {
+        $data = $request->validate(['product_id' => ['required', 'uuid']]);
+        $product = Product::query()->publiclyVisible()->find($data['product_id'])
+            ?? throw new DomainException('product_not_found', 'Ce produit n\'est plus proposé.', 404);
+        if ($request->user()->favoriteProducts()->count() >= self::MAX_FAVORITES) {
+            throw DomainException::unprocessable('too_many_favorites', 'Vous avez atteint le nombre maximal de favoris ('.self::MAX_FAVORITES.').');
+        }
+        $request->user()->favoriteProducts()->syncWithoutDetaching([$product->id]);
+
+        return response()->json(['data' => ['product_id' => $product->id, 'favorite' => true]], 201);
+    }
+
+    public function removeFavorite(Request $request, string $id): Response
+    {
+        $request->user()->favoriteProducts()->detach($id);
+
+        return response()->noContent();
+    }
+
+    // ---- Club MK ---------------------------------------------------------------------------------
+
+    public function loyalty(Request $request, LoyaltyService $loyalty): JsonResponse
+    {
+        return response()->json(['data' => $loyalty->card($this->customer($request))]);
+    }
+
+    // ---- Suppression du compte -------------------------------------------------------------------
+
+    /**
+     * Suppression du compte par le client (exigence Google Play et App Store, RGPD/CDP). Le compte est anonymisé :
+     * identité, coordonnées, adresses, favoris, appareils et connexions sont effacés. Les commandes et factures
+     * sont conservées sans lien avec le compte (obligations comptables), comme les avis (signés « Client »).
+     */
+    public function destroy(Request $request): Response
+    {
+        $data = $request->validate(['password' => ['required', 'string', 'max:200']]);
+        /** @var User $user */
+        $user = $request->user();
+        if ($user->isStaff() || $user->hasRole(User::ROLE_LIVREUR)) {
+            throw new DomainException('staff_account', 'Les comptes du personnel et des livreurs sont supprimés par un administrateur.', 403);
+        }
+        if (! Hash::check($data['password'], (string) $user->password)) {
+            throw DomainException::unprocessable('invalid_password', 'Mot de passe incorrect.');
+        }
+        $customer = $user->customer;
+        $open = [OrderStatus::Delivered->value, OrderStatus::Cancelled->value, OrderStatus::Rejected->value, OrderStatus::Draft->value];
+        if ($customer && $customer->orders()->notTest()->whereNotIn('status', $open)->exists()) {
+            throw DomainException::conflict('active_orders', 'Une commande est en cours : vous pourrez supprimer votre compte une fois qu\'elle sera livrée ou annulée.');
+        }
+
+        DB::transaction(function () use ($user, $customer) {
+            $this->audit->log('account.deleted', $user, null, ['customer_id' => $customer?->id], $user->id);
+            $user->mobileDevices()->delete();
+            $user->pushSubscriptions()->delete();
+            $user->favoriteProducts()->detach();
+            DB::table('sessions')->where('user_id', $user->id)->delete();
+            if ($customer) {
+                $customer->addresses()->delete();
+                Review::query()->where('customer_id', $customer->id)->update(['author_name' => 'Client MK Délices']);
+                $customer->forceFill([
+                    'user_id' => null, 'first_name' => 'Client', 'last_name' => null, 'phone' => '', 'email' => null,
+                    'preferences' => null, 'marketing_consent_at' => null,
+                ])->save();
+            }
+            $user->syncRoles([]);
+            // is_active passe à false : User::booted révoque tous les jetons mobiles.
+            $user->forceFill([
+                'name' => 'Compte supprimé', 'email' => null, 'phone' => null, 'password' => null,
+                'remember_token' => null, 'is_active' => false, 'anonymized_at' => now(),
+            ])->save();
+        });
+        if ($request->hasSession()) {
+            Auth::guard('web')->logout();
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
+        }
+
+        return response()->noContent();
+    }
+
+    private const MAX_FAVORITES = 100;
 
     private function customer(Request $request): Customer
     {

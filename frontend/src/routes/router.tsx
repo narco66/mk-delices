@@ -56,6 +56,8 @@ export const router = createBrowserRouter([
       { path: 'suivi/:reference', element: page(orders, 'TrackingPage') },
       { path: 'connexion', element: page(account, 'LoginPage') },
       { path: 'inscription', element: page(account, 'RegisterPage') },
+      { path: 'mot-de-passe-oublie', element: page(account, 'ForgotPasswordPage') },
+      { path: 'mot-de-passe/nouveau', element: page(account, 'ResetPasswordPage') },
       { path: 'acces-refuse', element: page(account, 'ForbiddenPage') },
       { path: 'compte', element: <RequireAuth role={['client']}>{page(account, 'AccountPage')}</RequireAuth> },
       { path: '*', element: page(pub, 'NotFoundPage') },

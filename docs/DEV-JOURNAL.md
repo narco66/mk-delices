@@ -147,5 +147,21 @@
 - **En modification** : badge « Principale », « Mettre en premier », texte alternatif modifiable, suppression confirmée.
 - **Tests** : Vitest 29/29 et E2E catalogue (création avec photo) au vert.
 
+## 22/11/2026 — Compte client, Club MK, notifications push mobiles, paiement réel suspendu
+- **Connexion par téléphone** (maquette) : le champ « Email ou téléphone » accepte les deux, sur le site comme sur l'application (`login`). Un numéro ne peut plus appartenir qu'à un seul compte : vérifié à l'inscription et à la modification du profil.
+- **Mot de passe oublié** : lien par email valable 60 min et à usage unique, vers la page `/mot-de-passe/nouveau`. Réponse identique que le compte existe ou non. Le changement de mot de passe déconnecte tous les appareils.
+- **Suppression du compte** (exigence Google Play / App Store), dans Profil & préférences : anonymisation, commandes et factures conservées (DEV-ARCH-016).
+- **Favoris** : cœur sur les cartes produit et la fiche produit, onglet « Mes favoris ».
+- **Recommander** : bouton sur chaque commande ; articles remis au panier aux prix du jour, articles indisponibles signalés.
+- **Club MK** : carte à tampons dans l'espace client, une récompense toutes les 6 commandes livrées (paramétrable, D-LOY-01). Visible par l'équipe sur la fiche client.
+- **Notifications push mobiles** (Firebase Cloud Messaging) :
+  - enregistrement du téléphone (`/account/devices`), lié au jeton de connexion ;
+  - envoi au client à chaque étape de sa commande, et au livreur pour une nouvelle mission ;
+  - aucune donnée personnelle dans le message, jetons expirés retirés ;
+  - inactif tant que Firebase n'est pas configuré (D-NOT-02).
+- **Paiement réel suspendu** : interrupteur `payments.online_enabled` (coupé), prioritaire sur l'activation de chaque moyen. Message « bientôt disponible » au client (D-PAY-06).
+- **Tests** : backend 204/204 (12 nouveaux, `AccountFeaturesTest`). Frontend 29/29. E2E `compte.spec.ts` (connexion par téléphone, Club MK, recommander, favoris, mot de passe oublié, suppression du compte) au vert sur mobile et ordinateur.
+- **Documentation** : `API-MOBILE.md` (§2, §3 et §5 Notifications push) et contrat OpenAPI.
+
 ## Travaux restants (voir rapport final §15)
 Décisions métier/juridiques, contrats PSP, hébergement, sauvegardes, tests de charge, test avec lecteur d'écran, exécution réelle du déploiement et du test de restauration une fois l'hébergeur choisi.

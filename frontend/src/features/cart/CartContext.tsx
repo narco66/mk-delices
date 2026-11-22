@@ -17,6 +17,8 @@ interface CartContextValue {
   remove: (itemId: string) => Promise<void>
   applyPromotion: (code: string | null) => Promise<void>
   reset: () => void
+  /** Panier renvoyé par « Recommander » : nouveau panier (avec jeton) ou panier courant complété. */
+  adopt: (data: CartState) => void
   headers: () => Record<string, string>
   isMutating: boolean
 }
@@ -99,6 +101,16 @@ export function CartProvider({ children }: { children: ReactNode }) {
     [mutation],
   )
 
+  const adopt = useCallback(
+    (data: CartState) => {
+      const id = data.cart_id ?? stored?.id
+      if (!id) return
+      if (data.cart_token) persist({ id, token: data.cart_token })
+      queryClient.setQueryData(['cart', id], data)
+    },
+    [stored, persist, queryClient],
+  )
+
   const reset = useCallback(() => {
     persist(null)
     queryClient.removeQueries({ queryKey: ['cart'] })
@@ -117,10 +129,11 @@ export function CartProvider({ children }: { children: ReactNode }) {
       remove,
       applyPromotion,
       reset,
+      adopt,
       headers,
       isMutating: mutation.isPending,
     }),
-    [cart, stored, isLoading, drawerOpen, add, update, remove, applyPromotion, reset, headers, mutation.isPending],
+    [cart, stored, isLoading, drawerOpen, add, update, remove, applyPromotion, reset, adopt, headers, mutation.isPending],
   )
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>

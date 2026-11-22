@@ -14,7 +14,9 @@ use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Validation\Rules\Password;
+use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Str;
+use Illuminate\Validation\Rules\Password as PasswordRule;
 use Laravel\Sanctum\PersonalAccessToken;
 use Spatie\Permission\Models\Permission;
 
@@ -29,22 +31,9 @@ class AuthController extends Controller
 
     public function login(Request $request): JsonResponse
     {
-        $credentials = $request->validate([
-            'email' => ['required', 'email', 'max:160'],
-            'password' => ['required', 'string', 'max:200'],
-        ]);
-        if (! Auth::guard('web')->attempt(['email' => mb_strtolower($credentials['email']), 'password' => $credentials['password']], $request->boolean('remember'))) {
-            $this->audit->log('auth.login_failed', null, null, ['email_hash' => hash('sha256', mb_strtolower($credentials['email']))]);
-
-            throw new DomainException('invalid_credentials', 'Identifiants incorrects.', 401);
-        }
-        /** @var User $user */
-        $user = Auth::guard('web')->user();
-        if (! $user->is_active) {
-            Auth::guard('web')->logout();
-
-            throw new DomainException('account_disabled', 'Ce compte est désactivé.', 403);
-        }
+        $data = $request->validate($this->credentialRules());
+        $user = $this->checkCredentials($data, 'web');
+        Auth::guard('web')->login($user, $request->boolean('remember'));
         if ($request->hasSession()) {
             $request->session()->regenerate();
         }
@@ -55,28 +44,14 @@ class AuthController extends Controller
     }
 
     /**
-     * Application mobile : échange email + mot de passe contre un jeton d'accès propre à l'appareil
-     * (en-tête « Authorization: Bearer <jeton> »). Mêmes règles que la connexion web : limitation des
-     * tentatives, compte actif obligatoire, journal d'audit. Le jeton n'est renvoyé qu'une seule fois.
+     * Application mobile : échange identifiant (email ou téléphone) + mot de passe contre un jeton d'accès
+     * propre à l'appareil (en-tête « Authorization: Bearer <jeton> »). Mêmes règles que la connexion web :
+     * limitation des tentatives, compte actif obligatoire, journal d'audit. Le jeton n'est renvoyé qu'une fois.
      */
     public function issueToken(Request $request): JsonResponse
     {
-        $data = $request->validate([
-            'email' => ['required', 'email', 'max:160'],
-            'password' => ['required', 'string', 'max:200'],
-            'device_name' => ['required', 'string', 'min:2', 'max:100'],
-        ]);
-        $user = User::query()->where('email', mb_strtolower($data['email']))->first();
-        // Hachage calculé même si l'email est inconnu : temps de réponse identique (pas d'énumération).
-        $valid = Hash::check($data['password'], $user?->password ?? self::DUMMY_HASH) && $user !== null;
-        if (! $valid) {
-            $this->audit->log('auth.login_failed', null, null, ['email_hash' => hash('sha256', mb_strtolower($data['email'])), 'channel' => 'mobile']);
-
-            throw new DomainException('invalid_credentials', 'Identifiants incorrects.', 401);
-        }
-        if (! $user->is_active) {
-            throw new DomainException('account_disabled', 'Ce compte est désactivé.', 403);
-        }
+        $data = $request->validate($this->credentialRules() + ['device_name' => ['required', 'string', 'min:2', 'max:100']]);
+        $user = $this->checkCredentials($data, 'mobile');
         $user->forceFill(['last_login_at' => now()])->save();
 
         return response()->json(['data' => $this->tokenPayload($user, $data['device_name'])], 201);
@@ -116,7 +91,7 @@ class AuthController extends Controller
             'last_name' => ['nullable', 'string', 'max:80'],
             'email' => ['required', 'email:rfc', 'max:160', 'unique:users,email'],
             'phone' => ['required', 'string', 'max:30'],
-            'password' => ['required', 'confirmed', Password::min(10)->letters()->numbers()],
+            'password' => ['required', 'confirmed', PasswordRule::min(10)->letters()->numbers()],
             'marketing_consent' => ['nullable', 'boolean'],
             'accepted_privacy' => ['accepted'],
         ]);
@@ -124,6 +99,7 @@ class AuthController extends Controller
         if ($phone === null) {
             throw DomainException::unprocessable('invalid_phone', 'Numéro de téléphone sénégalais invalide.');
         }
+        self::assertPhoneFree($phone);
         // Inscription publique : uniquement le rôle client, jamais de droits back-office (TRD §5).
         $user = DB::transaction(function () use ($data, $phone) {
             $user = User::query()->create([
@@ -176,6 +152,102 @@ class AuthController extends Controller
     public function me(Request $request): JsonResponse
     {
         return response()->json(['data' => $this->present($request->user())]);
+    }
+
+    /**
+     * Mot de passe oublié : un lien valable une heure est envoyé par email. Réponse identique que le compte
+     * existe ou non (pas d'énumération des comptes) ; les demandes répétées sont limitées par le courtier.
+     */
+    public function forgotPassword(Request $request): JsonResponse
+    {
+        $data = $request->validate(['email' => ['required', 'email', 'max:160']]);
+        $email = mb_strtolower($data['email']);
+        $user = User::query()->where('email', $email)->where('is_active', true)->first();
+        if ($user) {
+            $status = Password::broker()->sendResetLink(['email' => $email]);
+            $this->audit->log('auth.password_reset_requested', $user, null, ['sent' => $status === Password::RESET_LINK_SENT], $user->id);
+        }
+
+        return response()->json(['data' => [
+            'message' => 'Si un compte correspond à cette adresse, un email avec un lien de réinitialisation vient de vous être envoyé. Pensez à vérifier vos courriers indésirables.',
+        ]], 202);
+    }
+
+    /** Nouveau mot de passe à partir du lien reçu : tous les appareils connectés sont déconnectés. */
+    public function resetPassword(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'token' => ['required', 'string', 'max:200'],
+            'email' => ['required', 'email', 'max:160'],
+            'password' => ['required', 'confirmed', PasswordRule::min(10)->letters()->numbers()],
+        ]);
+        $status = Password::broker()->reset(
+            ['email' => mb_strtolower($data['email']), 'token' => $data['token'], 'password' => $data['password']],
+            function (User $user, string $password) {
+                // Le changement de mot de passe révoque les jetons mobiles (User::booted) ; les sessions web aussi.
+                $user->forceFill(['password' => $password, 'remember_token' => Str::random(60)])->save();
+                DB::table('sessions')->where('user_id', $user->id)->delete();
+                $this->audit->log('auth.password_reset', $user, null, null, $user->id);
+            },
+        );
+        if ($status !== Password::PASSWORD_RESET) {
+            throw DomainException::unprocessable('invalid_reset_link', 'Ce lien de réinitialisation est invalide ou a expiré. Faites une nouvelle demande.');
+        }
+
+        return response()->json(['data' => ['message' => 'Votre mot de passe a été modifié. Vous pouvez vous connecter.']]);
+    }
+
+    /** Un numéro de téléphone ne peut désigner qu'un seul compte (connexion par téléphone). */
+    public static function assertPhoneFree(string $phone, ?string $exceptUserId = null): void
+    {
+        $taken = User::query()->where('phone', $phone)->whereNull('anonymized_at')
+            ->when($exceptUserId, fn ($q, $id) => $q->whereKeyNot($id))->exists();
+        if ($taken) {
+            throw DomainException::unprocessable('phone_taken', 'Ce numéro de téléphone est déjà associé à un compte. Connectez-vous ou utilisez « Mot de passe oublié ».');
+        }
+    }
+
+    /** Identifiant de connexion : « login » (email ou téléphone), ou « email » / « phone » séparés. */
+    private function credentialRules(): array
+    {
+        return [
+            'login' => ['nullable', 'string', 'max:160', 'required_without_all:email,phone'],
+            'email' => ['nullable', 'email', 'max:160'],
+            'phone' => ['nullable', 'string', 'max:30'],
+            'password' => ['required', 'string', 'max:200'],
+        ];
+    }
+
+    /**
+     * Vérifie identifiant + mot de passe. Un hachage est toujours calculé, même si l'identifiant est inconnu :
+     * temps de réponse identique (pas d'énumération des comptes).
+     */
+    private function checkCredentials(array $data, string $channel): User
+    {
+        $identifier = trim((string) ($data['login'] ?? $data['email'] ?? $data['phone'] ?? ''));
+        $byEmail = str_contains($identifier, '@');
+        $phone = $byEmail ? null : Phone::normalizeSenegal($identifier);
+        $user = match (true) {
+            $byEmail => User::query()->where('email', mb_strtolower($identifier))->first(),
+            $phone !== null => User::query()->where('phone', $phone)->whereNull('anonymized_at')->orderByDesc('last_login_at')->first(),
+            default => null,
+        };
+        if (! Hash::check($data['password'], $user?->password ?? self::DUMMY_HASH) || $user === null) {
+            $this->audit->log('auth.login_failed', null, null, [
+                'identifier_hash' => hash('sha256', $byEmail ? mb_strtolower($identifier) : ($phone ?? $identifier)),
+                'method' => $byEmail ? 'email' : 'phone',
+                'channel' => $channel,
+            ]);
+
+            throw new DomainException('invalid_credentials', $byEmail || $phone !== null
+                ? 'Identifiants incorrects.'
+                : 'Saisissez votre adresse email ou votre numéro de téléphone (ex. 77 123 45 67).', 401);
+        }
+        if (! $user->is_active) {
+            throw new DomainException('account_disabled', 'Ce compte est désactivé.', 403);
+        }
+
+        return $user;
     }
 
     /** Nombre maximal d'appareils connectés par compte : au-delà, les plus anciens jetons sont révoqués. */

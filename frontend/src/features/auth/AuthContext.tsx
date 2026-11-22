@@ -6,7 +6,8 @@ import type { Me } from '@/types/api'
 interface AuthContextValue {
   me: Me | null
   isLoading: boolean
-  login: (email: string, password: string, remember?: boolean) => Promise<Me>
+  /** Identifiant : adresse email ou numéro de téléphone. */
+  login: (identifier: string, password: string, remember?: boolean) => Promise<Me>
   register: (payload: Record<string, unknown>) => Promise<Me>
   logout: () => Promise<void>
   can: (permission: string) => boolean
@@ -33,8 +34,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   })
 
   const login = useCallback(
-    async (email: string, password: string, remember = false) => {
-      const me = (await api.post<{ data: Me }>('/auth/login', { email, password, remember })).data
+    async (identifier: string, password: string, remember = false) => {
+      const me = (await api.post<{ data: Me }>('/auth/login', { login: identifier, password, remember })).data
       // On purge les données d'une éventuelle session précédente sans détacher l'observateur de ['me'].
       queryClient.removeQueries({ predicate: (q) => q.queryKey[0] !== 'me' })
       queryClient.setQueryData(['me'], me)

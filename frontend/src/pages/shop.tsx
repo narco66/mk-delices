@@ -9,6 +9,7 @@ import { Badge, Price, QuantityStepper } from '@/components/ui/Display'
 import { EmptyState, ErrorState, errorMessage } from '@/components/ui/Feedback'
 import { Input, Select } from '@/components/ui/Form'
 import { AllergyNotice, DemoCatalogNotice, ProductCard, ProductCardSkeleton, prepLabel, VariantPicker } from '@/features/catalog/components'
+import { FavoriteButton } from '@/features/account/favorites'
 import { useCart } from '@/features/cart/CartContext'
 import { useCategories, usePublicConfig, whatsappLink } from '@/hooks/usePublicData'
 import { useSeo } from '@/hooks/useSeo'
@@ -318,7 +319,10 @@ export function ProductPage() {
               )}
               {product.is_demo && <Badge tone="warning">Démonstration — prix fictif</Badge>}
             </div>
-            <h1 className="text-4xl leading-tight font-semibold sm:text-5xl">{product.name}</h1>
+            <div className="flex items-start justify-between gap-3">
+              <h1 className="text-4xl leading-tight font-semibold sm:text-5xl">{product.name}</h1>
+              <FavoriteButton product={product} className="mt-1 shrink-0 bg-cream-100" />
+            </div>
             {product.tagline && <p className="mt-2 text-lg text-cocoa-500">{product.tagline}</p>}
             {product.rating && product.rating.count > 0 && (
               <p className="mt-2 flex items-center gap-1 text-sm text-cocoa-700">

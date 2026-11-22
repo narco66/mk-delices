@@ -2,6 +2,7 @@
 
 namespace App\Domain\Deliveries\Push;
 
+use App\Domain\Customers\Push\MobilePushNotifier;
 use App\Models\DeliveryAssignment;
 use App\Models\User;
 use Illuminate\Support\Facades\Log;
@@ -13,7 +14,7 @@ use Illuminate\Support\Str;
  */
 class CourierPushNotifier
 {
-    public function __construct(private readonly PushTransport $transport) {}
+    public function __construct(private readonly PushTransport $transport, private readonly MobilePushNotifier $mobile) {}
 
     public static function enabled(): bool
     {
@@ -43,13 +44,21 @@ class CourierPushNotifier
         $order = $mission->order;
         $address = $order->address_snapshot ?? [];
         $where = (string) ($address['district'] ?? $address['zone_name'] ?? '');
+        $title = 'Nouvelle mission MK Délices';
+        // Données minimales (pas de nom ni de téléphone du client dans la notification).
+        $body = trim("Commande {$order->reference}".($where !== '' ? " · {$where}" : '')).'. Ouvrez pour accepter.';
         $this->sendTo($mission->partner?->user, [
-            'title' => 'Nouvelle mission MK Délices',
-            // Données minimales (pas de nom ni de téléphone du client dans la notification).
-            'body' => trim("Commande {$order->reference}".($where !== '' ? " · {$where}" : '')).'. Ouvrez pour accepter.',
+            'title' => $title,
+            'body' => $body,
             'url' => "/livreur/missions/{$mission->id}",
             'tag' => "mission-{$mission->id}",
         ], 3600);
+        // Application mobile du livreur (si elle est installée et la notification autorisée).
+        if ($mission->partner?->user && $mission->partner->user->is_active) {
+            $this->mobile->toUser($mission->partner->user->id, $title, $body, [
+                'type' => 'courier_mission', 'mission_id' => (string) $mission->id, 'route' => "/courier/missions/{$mission->id}",
+            ]);
+        }
     }
 
     /** @param array<string, mixed> $payload */

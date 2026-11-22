@@ -7,7 +7,7 @@ import { EmptyState, ErrorState, Skeleton, Spinner } from '@/components/ui/Feedb
 import { Input } from '@/components/ui/Form'
 import { api, toQuery } from '@/lib/api'
 import { CHANNEL_LABELS, formatDateTime, formatXof } from '@/lib/format'
-import type { AdminOrder } from '@/types/api'
+import type { AdminOrder, LoyaltyCard } from '@/types/api'
 import { type LaravelPage, Pagination } from '../catalog/shared'
 
 interface CustomerRow {
@@ -29,6 +29,7 @@ interface CustomerDetail extends Omit<CustomerRow, 'orders_count' | 'revenue_xof
   addresses: { id: string; label: string | null; district: string; street: string | null; landmark: string | null; is_default: boolean; zone: { id: string; name: string } | null }[]
   user: { id: string; email: string } | null
   orders: AdminOrder[]
+  loyalty?: LoyaltyCard
 }
 
 export function CustomersPage() {
@@ -125,6 +126,18 @@ export function CustomerDetailPage() {
               </p>
             ) : null}
           </Card>
+          {data.loyalty?.enabled && (
+            <Card className="space-y-2 p-5 text-sm">
+              <h2 className="text-lg font-semibold">Club MK</h2>
+              <p>
+                {data.loyalty.delivered_orders} commande(s) livrée(s) · carte en cours : {data.loyalty.stamps}/{data.loyalty.orders_per_reward}
+              </p>
+              <p>
+                <span className="text-cocoa-500">Récompenses gagnées :</span> {data.loyalty.rewards_earned} ({data.loyalty.reward_label})
+              </p>
+              <p className="text-xs text-cocoa-500">La récompense est remise par l'équipe : aucune remise automatique.</p>
+            </Card>
+          )}
           <Card className="space-y-3 p-5">
             <h2 className="text-lg font-semibold">Adresses</h2>
             {data.addresses.length === 0 ? (

@@ -33,6 +33,7 @@ const GROUP_LABELS: Record<string, string> = {
   delivery: 'Livraison',
   quality: 'Qualité et chaîne du froid',
   invoicing: 'Facturation et TVA',
+  loyalty: 'Club MK (fidélité)',
 }
 const DAYS: [string, string][] = [
   ['mon', 'Lundi'],
@@ -54,6 +55,7 @@ const INTEGER_KEYS = [
   'quality.cold_chain_max_minutes',
   'delivery.failed_fee_percent',
   'invoicing.vat_rate_percent',
+  'loyalty.orders_per_reward',
 ]
 const LIST_KEYS = ['ordering.closed_dates', 'delivery.proof_types', 'delivery.incident_reasons', 'delivery.client_fault_reasons']
 const LONG_TEXT_KEYS = ['policies.cancellation', 'invoicing.footer']
@@ -114,8 +116,9 @@ export function SettingsPage() {
               <h2 className="mb-4 text-lg font-semibold">{GROUP_LABELS[group] ?? group}</h2>
               {group === 'payments' && (
                 <Notice className="mb-4">
-                  Un moyen de paiement <strong>en ligne</strong> n'est proposé aux clients que s'il est activé ici <strong>et</strong> configuré techniquement (contrat marchand et
-                  identifiants serveur). Aucun contrat marchand n'est validé à ce jour : Orange Money et carte bancaire restent inactifs. Le{' '}
+                  Un moyen de paiement <strong>en ligne</strong> n'est proposé aux clients que si le <strong>paiement en ligne réel</strong> est activé, que le moyen est
+                  activé ici <strong>et</strong> configuré techniquement (contrat marchand et identifiants serveur). Aucun contrat marchand n'est validé à ce jour : le paiement
+                  en ligne réel reste coupé. Le{' '}
                   <strong>paiement à la livraison</strong> ne dépend d'aucun contrat : il se règle dans son propre bloc ci-dessous.
                 </Notice>
               )}

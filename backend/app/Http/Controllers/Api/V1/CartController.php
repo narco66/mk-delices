@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Domain\Cart\CartService;
 use App\Domain\Cart\QuoteService;
+use App\Domain\Shared\DomainException;
 use App\Http\Controllers\Controller;
 use App\Models\Cart;
 use Illuminate\Http\JsonResponse;
@@ -63,6 +64,45 @@ class CartController extends Controller
         $cart = $this->carts->setPromotionCode($this->cart($request), $data['code'] ?? null);
 
         return response()->json(['data' => $this->payload($cart)]);
+    }
+
+    /**
+     * « Recommander » : remet les articles d'une commande passée dans le panier, aux prix actuels.
+     * Panier courant (X-Cart-Id/X-Cart-Token) complété s'il est valide, sinon nouveau panier (jeton renvoyé).
+     * Les articles devenus indisponibles sont signalés au lieu de bloquer le reste.
+     */
+    public function reorder(Request $request, string $ref): JsonResponse
+    {
+        $customer = $request->user()->customer ?? throw new DomainException('no_customer_profile', 'Aucun profil client associé à ce compte.', 404);
+        $order = $customer->orders()->where('reference', $ref)->where('status', '!=', 'draft')->with('items')->first()
+            ?? throw new DomainException('order_not_found', 'Commande introuvable.', 404);
+
+        $created = null;
+        try {
+            $cart = $this->cart($request);
+            if ($cart->converted_order_id !== null && $cart->convertedOrder?->status->value !== 'draft') {
+                throw new DomainException('cart_converted', 'Panier déjà commandé.', 409);
+            }
+        } catch (DomainException) {
+            $created = $this->carts->create($customer->id);
+            $cart = $created['cart'];
+        }
+
+        $skipped = [];
+        foreach ($order->items as $item) {
+            try {
+                $this->carts->setItem($cart, $item->variant_id, $item->qty, increment: true);
+            } catch (DomainException $e) {
+                $skipped[] = ['name' => trim($item->product_name_snapshot.' — '.$item->variant_label_snapshot, ' —'), 'quantity' => $item->qty, 'reason' => $e->getMessage()];
+            }
+        }
+        if (count($skipped) === $order->items->count()) {
+            throw DomainException::unprocessable('reorder_unavailable', 'Aucun article de cette commande n\'est disponible aujourd\'hui.', ['skipped' => $skipped]);
+        }
+        $cart->refresh();
+
+        return response()->json(['data' => ($created ? ['cart_id' => $cart->id, 'cart_token' => $created['token']] : ['cart_id' => $cart->id])
+            + $this->payload($cart) + ['skipped' => $skipped]]);
     }
 
     private function cart(Request $request): Cart

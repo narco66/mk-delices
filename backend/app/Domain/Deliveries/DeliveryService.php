@@ -2,6 +2,7 @@
 
 namespace App\Domain\Deliveries;
 
+use App\Domain\Customers\Push\MobilePushNotifier;
 use App\Domain\Deliveries\Push\CourierPushNotifier;
 use App\Domain\Orders\OrderJournal;
 use App\Domain\Orders\OrderPaymentStatus;
@@ -86,7 +87,7 @@ class DeliveryService
                 $this->journal->record($locked, 'delivery', $actor, null, ['event' => 'delivery.proposed', 'assignment_id' => $assignment->id, 'partner' => $partner->display_name]);
                 $this->audit->log('delivery.assigned', $assignment, null, ['order' => $locked->reference, 'partner_id' => $partner->id]);
                 // Notification du navigateur au livreur (s'il l'a activée), seulement si l'affectation est validée.
-                if (CourierPushNotifier::enabled()) {
+                if (CourierPushNotifier::enabled() || app(MobilePushNotifier::class)->enabled()) {
                     DB::afterCommit(fn () => NotifyCourierOfMission::dispatch($assignment->id));
                 }
 

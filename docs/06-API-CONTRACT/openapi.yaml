@@ -474,9 +474,12 @@ paths:
           application/json:
             schema:
               type: object
-              required: [email, password, device_name]
+              required: [password, device_name]
+              description: Identifiant obligatoire — login (email ou téléphone), ou email, ou phone.
               properties:
+                login: {type: string, maxLength: 160, description: Email ou numéro de téléphone sénégalais, example: 77 123 45 67}
                 email: {type: string, format: email, maxLength: 160}
+                phone: {type: string, maxLength: 30}
                 password: {type: string, maxLength: 200}
                 device_name: {type: string, minLength: 2, maxLength: 100, example: iPhone de Fatou}
       responses:
@@ -583,6 +586,198 @@ paths:
       responses:
         '204': {description: Appareil déconnecté}
         '404': {description: Jeton inconnu ou appartenant à un autre compte, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+  /auth/forgot-password:
+    post:
+      summary: Mot de passe oublié — envoi d'un lien par email (valable 60 min, usage unique)
+      operationId: POST__auth_forgot_password
+      tags:
+      - Mobile
+      x-access-role: Public
+      description: Réponse identique que le compte existe ou non. 5 demandes par minute et par adresse.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: {type: string, format: email}
+      responses:
+        '202': {description: Demande prise en compte (message à afficher dans data.message)}
+        '429': {description: Trop de demandes, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+  /auth/reset-password:
+    post:
+      summary: Nouveau mot de passe à partir du lien reçu (déconnecte tous les appareils)
+      operationId: POST__auth_reset_password
+      tags:
+      - Mobile
+      x-access-role: Public
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, email, password, password_confirmation]
+              properties:
+                token: {type: string}
+                email: {type: string, format: email}
+                password: {type: string, minLength: 10, description: Lettres et chiffres}
+                password_confirmation: {type: string}
+      responses:
+        '200': {description: Mot de passe modifié}
+        '422': {description: Lien invalide ou expiré (invalid_reset_link) ou mot de passe refusé, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+  /account:
+    delete:
+      summary: Supprimer son compte (anonymisation ; commandes et factures conservées)
+      operationId: DELETE__account
+      tags:
+      - Mobile
+      x-access-role: Client
+      security:
+      - bearerAuth: []
+      - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password: {type: string}
+      responses:
+        '204': {description: Compte supprimé}
+        '403': {description: Compte du personnel ou livreur (staff_account), content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '409': {description: Commande en cours (active_orders), content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '422': {description: Mot de passe incorrect (invalid_password), content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+  /account/favorites:
+    get:
+      summary: Produits favoris encore proposés (format du catalogue)
+      operationId: GET__account_favorites
+      tags:
+      - Mobile
+      security:
+      - bearerAuth: []
+      - sessionCookie: []
+      responses:
+        '200': {description: Liste de produits}
+    post:
+      summary: Ajouter un favori (idempotent)
+      operationId: POST__account_favorites
+      tags:
+      - Mobile
+      security:
+      - bearerAuth: []
+      - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [product_id]
+              properties:
+                product_id: {type: string, format: uuid}
+      responses:
+        '201': {description: Favori enregistré}
+        '404': {description: Produit non proposé (product_not_found), content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+  /account/favorites/{product_id}:
+    delete:
+      summary: Retirer un favori
+      operationId: DELETE__account_favorites_id
+      tags:
+      - Mobile
+      security:
+      - bearerAuth: []
+      - sessionCookie: []
+      parameters:
+      - {name: product_id, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        '204': {description: Retiré}
+  /account/orders/{ref}/reorder:
+    post:
+      summary: Recommander — remet les articles d'une commande dans le panier, aux prix du jour
+      operationId: POST__account_orders_ref_reorder
+      tags:
+      - Mobile
+      security:
+      - bearerAuth: []
+      - sessionCookie: []
+      description: >-
+        En-têtes X-Cart-Id / X-Cart-Token facultatifs (panier courant complété). Sinon un nouveau panier est
+        créé et cart_token est renvoyé. skipped liste les articles devenus indisponibles.
+      parameters:
+      - {name: ref, in: path, required: true, schema: {type: string, example: MKD-AB12-CD34}}
+      responses:
+        '200': {description: Panier (même format que GET /cart) + skipped}
+        '404': {description: Commande introuvable, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '422': {description: Aucun article disponible (reorder_unavailable), content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+  /account/loyalty:
+    get:
+      summary: Club MK — carte de fidélité (tampons = commandes livrées)
+      operationId: GET__account_loyalty
+      tags:
+      - Mobile
+      security:
+      - bearerAuth: []
+      - sessionCookie: []
+      responses:
+        '200':
+          description: Carte (ou enabled false si le Club MK est désactivé)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      enabled: {type: boolean}
+                      delivered_orders: {type: integer}
+                      orders_per_reward: {type: integer}
+                      stamps: {type: integer}
+                      remaining: {type: integer}
+                      rewards_earned: {type: integer}
+                      reward_label: {type: string}
+  /account/devices:
+    post:
+      summary: Enregistrer ce téléphone pour les notifications push (jeton FCM)
+      operationId: POST__account_devices
+      tags:
+      - Mobile
+      security:
+      - bearerAuth: []
+      - sessionCookie: []
+      description: Lié au jeton de connexion de l'appareil (supprimé à la déconnexion). 10 téléphones au plus par compte.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, platform]
+              properties:
+                token: {type: string, minLength: 20, maxLength: 4096}
+                platform: {type: string, enum: [android, ios]}
+                app_version: {type: string, maxLength: 30}
+      responses:
+        '201': {description: Téléphone enregistré (id)}
+        '200': {description: "Téléphone déjà connu, mis à jour"}
+  /account/devices/{id}:
+    delete:
+      summary: Ne plus recevoir de notifications sur ce téléphone
+      operationId: DELETE__account_devices_id
+      tags:
+      - Mobile
+      security:
+      - bearerAuth: []
+      - sessionCookie: []
+      parameters:
+      - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        '204': {description: Désinscrit}
   /admin/orders:
     get:
       summary: Liste paginée

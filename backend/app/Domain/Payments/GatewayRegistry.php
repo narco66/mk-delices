@@ -36,7 +36,8 @@ class GatewayRegistry
         $enabled = (array) $this->settings->get('payments.methods', []);
         $methods = [];
         foreach ($this->gateways as $code => $gateway) {
-            if ($code === 'simulator') {
+            // Paiement réel suspendu (interrupteur général) : aucun prestataire en ligne n'est proposé.
+            if ($code === 'simulator' || ! $this->onlinePaymentEnabled()) {
                 continue;
             }
             if (($enabled[$code] ?? false) && $gateway->isConfigured()) {
@@ -51,6 +52,12 @@ class GatewayRegistry
         }
 
         return $methods;
+    }
+
+    /** Paiement en ligne réel autorisé (Wave, Orange Money, carte) : interrupteur des paramètres. */
+    public function onlinePaymentEnabled(): bool
+    {
+        return (bool) $this->settings->get('payments.online_enabled', false);
     }
 
     public function isAvailable(string $code): bool

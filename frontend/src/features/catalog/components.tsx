@@ -3,6 +3,7 @@ import { Link } from 'react-router'
 import { ProductVisual } from '@/components/brand/Brand'
 import { Badge, Price } from '@/components/ui/Display'
 import { Notice } from '@/components/ui/Feedback'
+import { FavoriteButton } from '@/features/account/favorites'
 import { cn } from '@/lib/cn'
 import { allergenLabel } from '@/lib/format'
 import type { Product, Variant } from '@/types/api'
@@ -24,6 +25,7 @@ export function ProductCard({ product, priority = false }: { product: Product; p
           {product.is_new && <Badge tone="raspberry">Nouveau</Badge>}
           {unavailable && <Badge tone="neutral">Indisponible</Badge>}
         </div>
+        <FavoriteButton product={product} className="absolute top-3 right-3 z-20" />
       </div>
       <div className="flex flex-1 flex-col gap-1.5 p-4">
         <p className="text-xs font-medium tracking-wide text-caramel-600 uppercase">{product.category?.name}</p>

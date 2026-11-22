@@ -55,6 +55,11 @@ return [
         // Services de notification acceptés pour l'adresse d'abonnement (évite d'envoyer des requêtes vers
         // n'importe quel serveur à partir d'une adresse fournie par le navigateur).
         'allowed_hosts' => ['fcm.googleapis.com', '*.push.services.mozilla.com', '*.notify.windows.com', '*.push.apple.com', 'web.push.apple.com'],
+        // Application mobile (Android et iOS) : Firebase Cloud Messaging. Fichier du compte de service hors dépôt.
+        'fcm' => [
+            'project_id' => env('FCM_PROJECT_ID'),
+            'credentials' => env('FCM_CREDENTIALS'),
+        ],
     ],
 
     'payments' => [
@@ -100,6 +105,9 @@ return [
         'ordering.cart_ttl_hours' => ['ordering', 72, false, false, 'Durée de vie d\'un panier'],
         'ordering.tracking_token_ttl_days' => ['ordering', 30, false, true, 'Validité du lien de suivi invité'],
         'ordering.max_qty_per_line' => ['ordering', 20, true, false, 'Quantité maximale par ligne'],
+        // Interrupteur général : tant qu'il est coupé, Wave, Orange Money et carte ne sont jamais proposés,
+        // même activés ci-dessous et configurés (aucun contrat de prestataire de paiement à ce jour).
+        'payments.online_enabled' => ['payments', false, true, true, 'Paiement en ligne réel (Wave, Orange Money, carte) : coupé tant qu’aucun prestataire de paiement n’est contractualisé et configuré'],
         'payments.methods' => ['payments', [
             'wave' => false, 'orange_money' => false, 'card' => false, 'cash_on_delivery' => false,
         ], true, true, 'Moyens de paiement activés (aucun contrat marchand validé à ce jour)'],
@@ -124,5 +132,10 @@ return [
         'invoicing.footer' => ['invoicing', null, false, true, 'Mentions complémentaires en pied de facture (conditions de paiement, coordonnées bancaires…)'],
         'preparation.undo_window_minutes' => ['preparation', 15, false, false, 'Délai (minutes) pendant lequel un démarrage de préparation fait par erreur peut être annulé (0 = jamais)'],
         'quality.cold_chain_max_minutes' => ['quality', null, false, true, 'Durée maximale hors froid (seuil sanitaire à valider par MK Délices)'],
+        // Club MK (maquette mobile) : carte de fidélité à tampons, une surprise toutes les N commandes livrées.
+        // La surprise est remise par l'équipe (visible sur la fiche client) : aucune remise automatique.
+        'loyalty.enabled' => ['loyalty', true, true, true, 'Club MK : carte de fidélité affichée dans l’espace client (site et application)'],
+        'loyalty.orders_per_reward' => ['loyalty', 6, true, true, 'Club MK : nombre de commandes livrées pour gagner une surprise'],
+        'loyalty.reward_label' => ['loyalty', 'une surprise MK Délices', true, true, 'Club MK : récompense annoncée au client (ex. « un tiramisu offert ») — à valider par MK Délices'],
     ],
 ];

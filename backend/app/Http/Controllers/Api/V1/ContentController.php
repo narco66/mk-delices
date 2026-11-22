@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Domain\Customers\Push\MobilePushNotifier;
 use App\Domain\Geo\Geocoder;
 use App\Domain\Geo\ZoneLocator;
 use App\Domain\Payments\GatewayRegistry;
@@ -21,6 +22,13 @@ class ContentController extends Controller
         return response()->json(['data' => [
             'settings' => $settings->public(),
             'payment_methods' => $gateways->availableMethods(),
+            // Paiement réel suspendu : message à afficher à la place de Wave, Orange Money et carte.
+            'online_payment' => [
+                'enabled' => $gateways->onlinePaymentEnabled(),
+                'notice' => $gateways->onlinePaymentEnabled() ? null : 'Le paiement en ligne (Wave, Orange Money, carte) sera bientôt disponible.',
+            ],
+            // Notifications push de l'application mobile : l'application ne demande l'autorisation que si elles sont actives.
+            'push' => ['mobile' => app(MobilePushNotifier::class)->enabled()],
             'currency' => 'XOF',
             'timezone' => $settings->timezone(),
             // Carte : affichée seulement si un fond de carte commercial est configuré (DEC-GEO-01).

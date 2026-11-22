@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { LogOut, MapPin, Package, Pencil, ShieldOff, Star, Trash2, UserRound } from 'lucide-react'
+import { Heart, LogOut, MapPin, Package, Pencil, RotateCcw, ShieldOff, Star, Trash2, UserRound, UserX } from 'lucide-react'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { Link, useNavigate, useSearchParams } from 'react-router'
@@ -11,7 +11,10 @@ import { Button, ButtonLink } from '@/components/ui/Button'
 import { Card, StatusPill } from '@/components/ui/Display'
 import { EmptyState, ErrorState, errorMessage, Notice, Skeleton } from '@/components/ui/Feedback'
 import { Checkbox, Field, Input, Select } from '@/components/ui/Form'
+import { useFavorites } from '@/features/account/useFavorites'
 import { useAuth } from '@/features/auth/AuthContext'
+import { useCart } from '@/features/cart/CartContext'
+import { ProductCard } from '@/features/catalog/components'
 import { LocationPicker } from '@/features/maps/LocationPicker'
 import { useZones } from '@/hooks/usePublicData'
 import { useSeo } from '@/hooks/useSeo'
@@ -19,7 +22,7 @@ import { api, ApiError } from '@/lib/api'
 import { cn } from '@/lib/cn'
 import { formatDateTime, formatSlot, formatXof } from '@/lib/format'
 import { InvoiceList } from '@/features/invoices/InvoiceList'
-import type { Me, Paginated, PickedLocation, PublicOrder } from '@/types/api'
+import type { CartState, LoyaltyCard, Me, Paginated, PickedLocation, PublicOrder } from '@/types/api'
 
 function homeFor(me: Me): string {
   if (me.is_staff) return '/admin'
@@ -32,7 +35,7 @@ function safeRedirect(target: string | null): string | null {
 }
 
 const loginSchema = z.object({
-  email: z.string().trim().email('Adresse email invalide.'),
+  identifier: z.string().trim().min(3, 'Saisissez votre email ou votre numéro de téléphone.'),
   password: z.string().min(1, 'Mot de passe requis.'),
   remember: z.boolean(),
 })
@@ -42,13 +45,13 @@ export function LoginPage() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const [serverError, setServerError] = useState<string | null>(null)
-  const form = useForm<z.infer<typeof loginSchema>>({ resolver: zodResolver(loginSchema), defaultValues: { email: '', password: '', remember: false } })
+  const form = useForm<z.infer<typeof loginSchema>>({ resolver: zodResolver(loginSchema), defaultValues: { identifier: '', password: '', remember: false } })
   useSeo({ title: 'Connexion', noindex: true })
 
   const onSubmit = form.handleSubmit(async (v) => {
     setServerError(null)
     try {
-      const me = await login(v.email, v.password, v.remember)
+      const me = await login(v.identifier, v.password, v.remember)
       navigate(safeRedirect(params.get('redirect')) ?? homeFor(me), { replace: true })
     } catch (e) {
       setServerError(e instanceof ApiError && e.status === 429 ? 'Trop de tentatives. Patientez une minute avant de réessayer.' : errorMessage(e))
@@ -63,12 +66,17 @@ export function LoginPage() {
         <p className="mt-1 text-sm text-cocoa-500">Clients, équipe MK Délices et livreurs partenaires.</p>
         <form onSubmit={onSubmit} noValidate className="mt-6 space-y-4">
           {serverError && <Notice tone="error">{serverError}</Notice>}
-          <Field label="Email" required error={form.formState.errors.email?.message}>
-            {(p) => <Input {...p} {...form.register('email')} type="email" autoComplete="email" />}
+          <Field label="Email ou téléphone" required error={form.formState.errors.identifier?.message}>
+            {(p) => <Input {...p} {...form.register('identifier')} autoComplete="username" placeholder="vous@exemple.com ou 77 123 45 67" />}
           </Field>
           <Field label="Mot de passe" required error={form.formState.errors.password?.message}>
             {(p) => <Input {...p} {...form.register('password')} type="password" autoComplete="current-password" />}
           </Field>
+          <p className="-mt-2 text-right text-sm">
+            <Link to="/mot-de-passe-oublie" className="text-raspberry-600 underline">
+              Mot de passe oublié ?
+            </Link>
+          </p>
           <Checkbox {...form.register('remember')} label="Rester connecté sur cet appareil" />
           <Button type="submit" size="lg" className="w-full" loading={form.formState.isSubmitting}>
             Se connecter
@@ -119,7 +127,7 @@ export function RegisterPage() {
     } catch (e) {
       if (e instanceof ApiError) {
         Object.entries(e.fieldErrors).forEach(([k, m]) => form.setError(k as keyof RegisterForm, { message: m[0] }))
-        if (e.code === 'invalid_phone') form.setError('phone', { message: e.message })
+        if (e.code === 'invalid_phone' || e.code === 'phone_taken') form.setError('phone', { message: e.message })
       }
       toast.error(errorMessage(e))
     }
@@ -174,6 +182,104 @@ export function RegisterPage() {
   )
 }
 
+export function ForgotPasswordPage() {
+  const [sent, setSent] = useState<string | null>(null)
+  const form = useForm<{ email: string }>({ resolver: zodResolver(z.object({ email: z.string().trim().email('Adresse email invalide.') })), defaultValues: { email: '' } })
+  useSeo({ title: 'Mot de passe oublié', noindex: true })
+  const onSubmit = form.handleSubmit(async (v) => {
+    try {
+      setSent((await api.post<{ data: { message: string } }>('/auth/forgot-password', v)).data.message)
+    } catch (e) {
+      toast.error(e instanceof ApiError && e.status === 429 ? 'Trop de demandes. Patientez quelques minutes avant de réessayer.' : errorMessage(e))
+    }
+  })
+  return (
+    <div className="container-page grid min-h-[70vh] place-items-center py-12">
+      <Card className="w-full max-w-md p-6 sm:p-8">
+        <h1 className="text-3xl font-semibold">Mot de passe oublié</h1>
+        {sent ? (
+          <div className="mt-6 space-y-4">
+            <Notice tone="success">{sent}</Notice>
+            <p className="text-sm text-cocoa-500">Le lien est valable une heure. Pas d'email ? Contactez le service client, nous vous aiderons à récupérer votre compte.</p>
+            <ButtonLink to="/connexion" variant="secondary" className="w-full">
+              Retour à la connexion
+            </ButtonLink>
+          </div>
+        ) : (
+          <form onSubmit={onSubmit} noValidate className="mt-6 space-y-4">
+            <p className="text-sm text-cocoa-500">Saisissez l'adresse email de votre compte : nous vous envoyons un lien pour choisir un nouveau mot de passe.</p>
+            <Field label="Email" required error={form.formState.errors.email?.message}>
+              {(p) => <Input {...p} {...form.register('email')} type="email" autoComplete="email" />}
+            </Field>
+            <Button type="submit" size="lg" className="w-full" loading={form.formState.isSubmitting}>
+              Recevoir le lien
+            </Button>
+            <p className="text-center text-sm">
+              <Link to="/connexion" className="text-raspberry-600 underline">
+                Retour à la connexion
+              </Link>
+            </p>
+          </form>
+        )}
+      </Card>
+    </div>
+  )
+}
+
+const resetSchema = z
+  .object({
+    password: z.string().min(10, '10 caractères minimum.').regex(/[A-Za-z]/, 'Au moins une lettre.').regex(/\d/, 'Au moins un chiffre.'),
+    password_confirmation: z.string(),
+  })
+  .refine((v) => v.password === v.password_confirmation, { path: ['password_confirmation'], message: 'Les mots de passe ne correspondent pas.' })
+
+export function ResetPasswordPage() {
+  const [params] = useSearchParams()
+  const navigate = useNavigate()
+  const token = params.get('token') ?? ''
+  const email = params.get('email') ?? ''
+  const form = useForm<z.infer<typeof resetSchema>>({ resolver: zodResolver(resetSchema), defaultValues: { password: '', password_confirmation: '' } })
+  useSeo({ title: 'Nouveau mot de passe', noindex: true })
+  const onSubmit = form.handleSubmit(async (v) => {
+    try {
+      const res = await api.post<{ data: { message: string } }>('/auth/reset-password', { ...v, token, email })
+      toast.success(res.data.message)
+      navigate('/connexion', { replace: true })
+    } catch (e) {
+      if (e instanceof ApiError) Object.entries(e.fieldErrors).forEach(([k, m]) => k in v && form.setError(k as keyof typeof v, { message: m[0] }))
+      toast.error(errorMessage(e))
+    }
+  })
+  return (
+    <div className="container-page grid min-h-[70vh] place-items-center py-12">
+      <Card className="w-full max-w-md p-6 sm:p-8">
+        <h1 className="text-3xl font-semibold">Nouveau mot de passe</h1>
+        {!token || !email ? (
+          <div className="mt-6 space-y-4">
+            <Notice tone="error">Ce lien est incomplet. Ouvrez le lien reçu par email, ou faites une nouvelle demande.</Notice>
+            <ButtonLink to="/mot-de-passe-oublie" className="w-full">
+              Nouvelle demande
+            </ButtonLink>
+          </div>
+        ) : (
+          <form onSubmit={onSubmit} noValidate className="mt-6 space-y-4">
+            <p className="text-sm text-cocoa-500">Compte : {email}. Tous vos appareils connectés seront déconnectés.</p>
+            <Field label="Nouveau mot de passe" required error={form.formState.errors.password?.message} hint="10 caractères, lettres et chiffres.">
+              {(p) => <Input {...p} {...form.register('password')} type="password" autoComplete="new-password" />}
+            </Field>
+            <Field label="Confirmation" required error={form.formState.errors.password_confirmation?.message}>
+              {(p) => <Input {...p} {...form.register('password_confirmation')} type="password" autoComplete="new-password" />}
+            </Field>
+            <Button type="submit" size="lg" className="w-full" loading={form.formState.isSubmitting}>
+              Enregistrer le mot de passe
+            </Button>
+          </form>
+        )}
+      </Card>
+    </div>
+  )
+}
+
 export function ForbiddenPage() {
   const { me } = useAuth()
   useSeo({ title: 'Accès refusé', noindex: true })
@@ -209,7 +315,7 @@ const EMPTY_DRAFT = { zone_id: '', district: '', street: '', landmark: '', label
 export function AccountPage() {
   const { me, logout } = useAuth()
   const navigate = useNavigate()
-  const [tab, setTab] = useState<'orders' | 'profile' | 'addresses'>('orders')
+  const [tab, setTab] = useState<'orders' | 'favorites' | 'profile' | 'addresses'>('orders')
   useSeo({ title: 'Mon espace', noindex: true })
 
   return (
@@ -230,6 +336,7 @@ export function AccountPage() {
           Se déconnecter
         </Button>
       </div>
+      <LoyaltyCardPanel />
       {/* Onglets accessibles : flèches gauche/droite, onglet relié à son panneau (audit lot 3). */}
       <div
         className="mt-8 flex gap-2 overflow-x-auto"
@@ -237,7 +344,7 @@ export function AccountPage() {
         aria-label="Mon compte"
         onKeyDown={(e) => {
           if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return
-          const keys = ['orders', 'profile', 'addresses'] as const
+          const keys = ['orders', 'favorites', 'profile', 'addresses'] as const
           const next = keys[(keys.indexOf(tab) + (e.key === 'ArrowRight' ? 1 : keys.length - 1)) % keys.length]
           setTab(next)
           document.getElementById(`tab-${next}`)?.focus()
@@ -246,6 +353,7 @@ export function AccountPage() {
         {(
           [
             ['orders', 'Mes commandes', <Package key="o" className="size-4" />],
+            ['favorites', 'Mes favoris', <Heart key="f" className="size-4" />],
             ['profile', 'Profil & préférences', <UserRound key="p" className="size-4" />],
             ['addresses', 'Adresses', <MapPin key="a" className="size-4" />],
           ] as const
@@ -258,10 +366,93 @@ export function AccountPage() {
       </div>
       <div className="mt-6" id="panneau-compte" role="tabpanel" aria-labelledby={`tab-${tab}`}>
         {tab === 'orders' && <AccountOrders />}
-        {tab === 'profile' && <AccountProfile />}
+        {tab === 'favorites' && <AccountFavorites />}
+        {tab === 'profile' && (
+          <>
+            <AccountProfile />
+            <DeleteAccount />
+          </>
+        )}
         {tab === 'addresses' && <AccountAddresses />}
       </div>
     </div>
+  )
+}
+
+/** Club MK (maquette mobile) : carte à tampons, une récompense toutes les N commandes livrées. */
+function LoyaltyCardPanel() {
+  const { data } = useQuery({ queryKey: ['account', 'loyalty'], queryFn: async () => (await api.get<{ data: LoyaltyCard }>('/account/loyalty')).data })
+  if (!data?.enabled) return null
+  return (
+    <section aria-labelledby="club-mk" className="mt-6 overflow-hidden rounded-[var(--radius-card)] bg-cocoa-800 p-6 text-cream-50 shadow-soft">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <p className="text-xs font-semibold tracking-[0.2em] text-caramel-300 uppercase" id="club-mk">
+            Club MK
+          </p>
+          <p className="mt-1 text-2xl font-semibold">
+            {data.delivered_orders} délice{data.delivered_orders > 1 ? 's' : ''} savouré{data.delivered_orders > 1 ? 's' : ''}
+          </p>
+          <p className="mt-1 text-sm text-cream-200">
+            Encore {data.remaining} commande{data.remaining > 1 ? 's' : ''} avant {data.reward_label}.
+            {data.rewards_earned > 0 && ` Vous avez déjà gagné ${data.rewards_earned} récompense${data.rewards_earned > 1 ? 's' : ''}.`}
+          </p>
+        </div>
+        <p className="font-display text-4xl font-semibold" aria-label={`${data.stamps} tampon(s) sur ${data.orders_per_reward}`}>
+          {String(data.stamps).padStart(2, '0')}
+          <span className="text-lg text-cream-300">/{String(data.orders_per_reward).padStart(2, '0')}</span>
+        </p>
+      </div>
+      <ol className="mt-4 flex gap-1.5" aria-hidden>
+        {Array.from({ length: data.orders_per_reward }, (_, i) => (
+          <li key={i} className={cn('h-2 flex-1 rounded-full', i < data.stamps ? 'bg-caramel-400' : 'bg-cream-50/20')} />
+        ))}
+      </ol>
+      <p className="mt-3 text-xs text-cream-300">Chaque commande livrée compte. La récompense vous est remise par l'équipe MK Délices.</p>
+    </section>
+  )
+}
+
+function AccountFavorites() {
+  const { data, isLoading, error, refetch } = useFavorites()
+  if (isLoading) return <Skeleton className="h-40" />
+  if (error) return <ErrorState error={error} onRetry={() => refetch()} />
+  if (!data?.length)
+    return (
+      <EmptyState
+        icon={<Heart className="size-6" />}
+        title="Aucun favori pour le moment"
+        description="Touchez le cœur sur un produit pour le retrouver ici."
+        action={<ButtonLink to="/boutique">Découvrir la boutique</ButtonLink>}
+      />
+    )
+  return (
+    <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
+      {data.map((p) => (
+        <ProductCard key={p.id} product={p} />
+      ))}
+    </div>
+  )
+}
+
+/** « Recommander » : remet les articles dans le panier, aux prix du jour. */
+function ReorderButton({ reference }: { reference: string }) {
+  const { headers, adopt, setDrawerOpen } = useCart()
+  const reorder = useMutation({
+    mutationFn: async () => (await api.post<{ data: CartState }>(`/account/orders/${reference}/reorder`, {}, { headers: headers() })).data,
+    onSuccess: (cart) => {
+      adopt(cart)
+      const skipped = cart.skipped ?? []
+      if (skipped.length) toast.warning(`Non ajouté (indisponible) : ${skipped.map((s) => s.name).join(', ')}`)
+      toast.success('Articles ajoutés au panier, aux prix du jour', { action: { label: 'Voir le panier', onClick: () => setDrawerOpen(true) } })
+      setDrawerOpen(true)
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+  return (
+    <Button size="sm" variant="secondary" icon={<RotateCcw className="size-4" />} loading={reorder.isPending} onClick={() => reorder.mutate()}>
+      Recommander
+    </Button>
   )
 }
 
@@ -287,11 +478,10 @@ function AccountOrders() {
             </p>
             <p className="text-sm text-cocoa-500 capitalize">{formatSlot(o.slot_start_at, o.slot_end_at)}</p>
           </Link>
-          {(o.invoices ?? []).length > 0 && (
-            <div className="mt-2 px-1">
-              <InvoiceList invoices={o.invoices} pathFor={(i) => `/orders/${o.reference}/invoices/${i.number}`} />
-            </div>
-          )}
+          <div className="mt-2 flex flex-wrap items-start justify-between gap-2 px-1">
+            {(o.invoices ?? []).length > 0 ? <InvoiceList invoices={o.invoices} pathFor={(i) => `/orders/${o.reference}/invoices/${i.number}`} /> : <span />}
+            <ReorderButton reference={o.reference} />
+          </div>
         </li>
       ))}
     </ul>
@@ -337,6 +527,63 @@ function AccountProfile() {
           Enregistrer
         </Button>
       </form>
+    </Card>
+  )
+}
+
+/**
+ * Suppression du compte (exigence Google Play / App Store) : identité, coordonnées, adresses, favoris et
+ * appareils effacés ; commandes et factures conservées sans lien avec la personne (obligations comptables).
+ */
+function DeleteAccount() {
+  const { logout } = useAuth()
+  const navigate = useNavigate()
+  const [open, setOpen] = useState(false)
+  const [password, setPassword] = useState('')
+  const remove = useMutation({
+    mutationFn: () => api.delete('/account', { body: { password } }),
+    onSuccess: async () => {
+      // Accueil d'abord : sinon la page compte, protégée, redirige vers la connexion à la fin de session.
+      navigate('/', { replace: true })
+      await logout()
+      toast.success('Votre compte a été supprimé. Merci d’avoir fait confiance à MK Délices.')
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+  return (
+    <Card className="mt-6 max-w-xl border border-error-50 p-6">
+      <h2 className="flex items-center gap-2 font-semibold text-error-600">
+        <UserX className="size-5" aria-hidden /> Supprimer mon compte
+      </h2>
+      <p className="mt-2 text-sm text-cocoa-500">
+        Vos informations personnelles, adresses, favoris et appareils connectés sont effacés définitivement. Les commandes et factures déjà émises sont conservées sans lien
+        avec votre identité, comme la loi l'exige. Une commande en cours doit être livrée ou annulée avant la suppression.
+      </p>
+      {open ? (
+        <form
+          className="mt-4 space-y-3"
+          onSubmit={(e) => {
+            e.preventDefault()
+            remove.mutate()
+          }}
+        >
+          <Field label="Confirmez avec votre mot de passe" required>
+            {(p) => <Input {...p} type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />}
+          </Field>
+          <div className="flex flex-wrap gap-2">
+            <Button type="submit" variant="danger" loading={remove.isPending} disabled={!password}>
+              Supprimer définitivement
+            </Button>
+            <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
+              Annuler
+            </Button>
+          </div>
+        </form>
+      ) : (
+        <Button className="mt-4" variant="secondary" onClick={() => setOpen(true)}>
+          Supprimer mon compte…
+        </Button>
+      )}
     </Card>
   )
 }

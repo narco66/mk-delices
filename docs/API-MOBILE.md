@@ -23,8 +23,10 @@ En-têtes de chaque requête : `Accept: application/json`, `Content-Type: applic
 ### Connexion (tout compte : client, livreur, équipe)
 ```http
 POST /api/v1/auth/token
-{ "email": "fatou@example.sn", "password": "…", "device_name": "iPhone de Fatou" }
+{ "login": "77 123 45 67", "password": "…", "device_name": "iPhone de Fatou" }
 ```
+`login` accepte **l'email ou le numéro de téléphone** (formats `77 123 45 67`, `771234567`, `+221 77 123 45 67` ; connexion par téléphone de la maquette, ajoutée le 22/11/2026). L'ancien champ `email` reste accepté. Depuis le 22/11/2026, un numéro de téléphone ne peut appartenir qu'à un seul compte (`422 phone_taken` à l'inscription ou au changement de profil).
+
 Réponse `201` :
 ```json
 { "data": {
@@ -40,6 +42,22 @@ Réponse `201` :
 
 ### Inscription d'un client
 `POST /api/v1/auth/register` avec `first_name`, `last_name?`, `email`, `phone` (sénégalais), `password` (≥ 10 caractères, lettres et chiffres), `password_confirmation`, `accepted_privacy: true`, `marketing_consent?` **et `device_name`** → même réponse que la connexion (compte client + jeton).
+
+### Mot de passe oublié
+| Action | Requête |
+|---|---|
+| Demander un lien | `POST /auth/forgot-password` `{ email }` → `202` avec un message identique que le compte existe ou non |
+| Choisir le nouveau mot de passe | Le lien reçu par email ouvre la page du site `/mot-de-passe/nouveau?token=…&email=…` (valable 60 min, usage unique) ; l'API équivalente est `POST /auth/reset-password` `{ token, email, password, password_confirmation }` |
+
+Le changement de mot de passe **déconnecte tous les appareils** (jetons révoqués). Limite : 5 demandes par minute et par adresse.
+
+### Suppression du compte (exigence Google Play / App Store)
+`DELETE /account` `{ password }` → `204`. Identité, coordonnées, adresses, favoris, appareils et jetons sont effacés ; les commandes et factures sont conservées sans lien avec la personne (obligations comptables) ; les avis sont signés « Client MK Délices ».
+- `422 invalid_password` : mot de passe incorrect ;
+- `409 active_orders` : une commande est en cours (à livrer ou annuler d'abord) ;
+- `403 staff_account` : comptes du personnel et des livreurs, supprimés par un administrateur.
+
+Pour la fiche Google Play (« URL de suppression du compte ») : la page `/compte` du site (onglet **Profil & préférences** → **Supprimer mon compte**), accessible après connexion.
 
 ### Session et appareils
 | Action | Requête |
@@ -64,9 +82,14 @@ Sécurité côté serveur : 5 tentatives de connexion par minute et par email ; 
 | Suivi | `GET /orders/{ref}/status` ; annulation avant acceptation `POST /orders/{ref}/cancel` ; avis après livraison `POST /orders/{ref}/reviews` ; message WhatsApp prérempli `POST /orders/{ref}/whatsapp-draft` |
 | Factures | `GET /orders/{ref}/invoices/{numéro}` → PDF (liste dans `invoices` de la commande) |
 | Espace client | `GET /account/orders`, `PUT /account/profile`, `GET|POST /account/addresses`, `PUT|DELETE /account/addresses/{id}` |
+| Favoris | `GET /account/favorites` (produits, même format que le catalogue ; un produit retiré disparaît de la liste), `POST /account/favorites` `{ product_id }`, `DELETE /account/favorites/{product_id}` |
+| Recommander | `POST /account/orders/{ref}/reorder` (en-têtes `X-Cart-Id`/`X-Cart-Token` facultatifs) → panier aux **prix du jour** ; `cart_token` renvoyé seulement si un nouveau panier a été créé ; `skipped[]` = articles devenus indisponibles ; `422 reorder_unavailable` si aucun ne l'est |
+| Club MK | `GET /account/loyalty` → `{ enabled, delivered_orders, orders_per_reward, stamps, remaining, rewards_earned, reward_label }` (ou `{ enabled: false }`) ; carte « 04/06 » de la maquette = `stamps`/`orders_per_reward` |
 
 **Client connecté :** avec le jeton `Bearer`, panier et commande sont rattachés à son compte, et ses commandes sont accessibles **sans** `X-Tracking-Token`.
 **Invité (sans compte) :** l'application conserve le `tracking_token` reçu à la commande et l'envoie dans l'en-tête `X-Tracking-Token` pour suivre, payer ou télécharger la facture.
+
+**Paiement réel suspendu (22/11/2026) :** tant qu'aucun prestataire n'est contractualisé, `GET /config` renvoie `online_payment.enabled: false` et un message `online_payment.notice` à afficher ; Wave, Orange Money et carte n'apparaissent jamais dans `payment_methods`. Seuls le paiement à la livraison (s'il est activé) et, en préproduction, le paiement simulé restent proposés.
 
 **Règle impérative :** une commande n'est payée que lorsque **le serveur** l'indique (`payment_status: "paid"`). Ne jamais considérer un paiement réussi sur la seule base du retour du navigateur ou du prestataire.
 
@@ -80,11 +103,30 @@ Compte avec le rôle `livreur` (`user.is_courier: true`) :
 | Missions | `GET /courier/missions`, `GET /courier/missions/{id}` (adresse et téléphone du client visibles seulement après acceptation) |
 | Actions | `POST /courier/missions/{id}/actions` : `accept`, `refuse` (`reason`), `pick_up` (`packaging_checked: true`), `deliver` (`proof_type`, `proof_reference`, `product_condition`, `cash_collected_xof` si paiement à la livraison), `fail` (`incident_reason`, `incident_note`, `contact_attempted`) |
 
-## 5. Équipe (back-office mobile, optionnel)
+## 5. Notifications push (clients et livreurs)
+
+Firebase Cloud Messaging (Android, et iOS via APNs). `GET /config` → `push.mobile: true` quand le serveur est configuré : l'application ne demande l'autorisation de notifier que dans ce cas.
+
+| Action | Requête |
+|---|---|
+| Enregistrer le téléphone (après connexion, et à chaque nouveau jeton FCM) | `POST /account/devices` `{ token, platform: "android"|"ios", app_version? }` → `201` (ou `200` si déjà connu) avec `id` |
+| Désactiver les notifications sur ce téléphone | `DELETE /account/devices/{id}` |
+
+- L'enregistrement est lié au **jeton de connexion** : déconnexion, mot de passe changé ou compte désactivé le suppriment automatiquement. Un même téléphone qui change de compte est réattribué au dernier compte connecté. Au plus 10 téléphones par compte.
+- Le jeton FCM est chiffré en base et jamais renvoyé par l'API ; un jeton refusé par Firebase (application désinstallée) est supprimé.
+- **Contenu** : titre + texte sans donnée personnelle (ni nom, ni téléphone, ni adresse), et des données de navigation :
+  - client : `{ type: "order_update", event: "order.accepted", reference, route: "/orders/{ref}" }` (événements : reçue, confirmée, refusée, prête, en route, livrée, annulée, livraison non aboutie, paiement confirmé) ;
+  - livreur : `{ type: "courier_mission", mission_id, route: "/courier/missions/{id}" }` (nouvelle mission proposée).
+- À l'ouverture d'une notification, relire l'état par l'API (`GET /orders/{ref}/status`, `GET /courier/missions/{id}`) : la notification n'est jamais une source de vérité.
+- Canal Android : `orders` (à créer dans l'application).
+
+Configuration serveur (`.env`, jamais dans le dépôt) : `FCM_PROJECT_ID` et `FCM_CREDENTIALS` (chemin du fichier JSON du compte de service Firebase, ex. `/etc/mk-delices/firebase-service-account.json`, lisible par PHP uniquement). Sans ces valeurs, aucune notification n'est envoyée et le reste fonctionne.
+
+## 6. Équipe (back-office mobile, optionnel)
 
 Les routes `/admin/*` acceptent le même jeton, avec les permissions du rôle (`user.permissions`) : commandes, préparation, livraisons, factures… Elles sont décrites dans le contrat OpenAPI.
 
-## 6. Conventions
+## 7. Conventions
 
 - **Erreurs** : `{ "error": { "code", "message", "details" }, "request_id" }`. Afficher `message` (en français, destiné à l'utilisateur). `422 validation_failed` : `details` contient les erreurs par champ. Communiquer `request_id` au support.
 - **Codes utiles** : `401` jeton absent/expiré/révoqué → reconnexion ; `403` droit manquant ou compte désactivé ; `404` ressource introuvable ou non autorisée (volontairement indistinct) ; `409` conflit (état changé entre-temps, créneau pris) → recharger ; `429` trop de requêtes → réessayer plus tard (en-tête `Retry-After`).
@@ -94,6 +136,6 @@ Les routes `/admin/*` acceptent le même jeton, avec les permissions du rôle (`
 - **Limitation de débit** : 120 requêtes/min par utilisateur, 60/min pour le panier, 20/min pour la commande, 30/min pour le suivi.
 - **Version** : préfixe `/api/v1` ; toute évolution incompatible passera par `/api/v2`.
 
-## 7. Comptes de test (préproduction)
+## 8. Comptes de test (préproduction)
 
 Voir [ACCES-DEMONSTRATION.md](ACCES-DEMONSTRATION.md) : client `client1@mk-delices.test`, livreur `livreur1@mk-delices.test`, etc. Paiement : méthode `simulator` (aucun débit réel).

@@ -2,6 +2,7 @@
 
 namespace App\Domain\Orders;
 
+use App\Domain\Customers\Push\MobilePushNotifier;
 use App\Domain\Shared\Phone;
 use App\Models\NotificationLog;
 use App\Models\Order;
@@ -13,10 +14,13 @@ use Illuminate\Support\Str;
 
 /**
  * Notifications transactionnelles avec anti-duplication (dedupe_key unique) et journal d'envoi.
- * Canal client : email si fourni. WhatsApp/SMS automatisés : non configurés (décision D-NOT-01).
+ * Canaux client : email si fourni, notification push de l'application mobile si un téléphone est enregistré.
+ * WhatsApp/SMS automatisés : non configurés (décision D-NOT-01).
  */
 class OrderNotifier
 {
+    public function __construct(private readonly MobilePushNotifier $push) {}
+
     /** Rôles à prévenir selon le nouvel état. */
     private const STAFF_ROUTING = [
         'pending_confirmation' => ['commercial', 'admin'],
@@ -57,6 +61,12 @@ class OrderNotifier
 
     private function notifyCustomer(Order $order, string $event): void
     {
+        // Application mobile du client (compte connecté sur un téléphone, notifications autorisées).
+        $userId = $order->customer?->user_id;
+        if ($userId && $this->push->enabled() && $order->customer->user->mobileDevices()->exists()
+            && $this->claim($order, "push:{$event}", 'push', null)) {
+            $this->push->orderEvent($order, $event);
+        }
         $email = $order->customer_snapshot['email'] ?? null;
         if (! $email) {
             $this->claim($order, "customer:{$event}", 'none', Phone::mask($order->customer_snapshot['phone'] ?? null), 'skipped');

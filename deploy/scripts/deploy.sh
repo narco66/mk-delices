@@ -28,7 +28,9 @@ echo "Déploiement de $ref dans $APP_DIR (version actuelle : $previous)"
 
 echo "1/9 Sauvegarde préalable"
 if [[ "${SKIP_BACKUP:-0}" != "1" ]]; then
-  sudo /usr/local/sbin/mk-backup   # enveloppe root de deploy/scripts/backup.sh (lit /etc/mk-delices/backup.env)
+  # Enveloppe root de deploy/scripts/backup.sh ; l'environnement sauvegardé suit APP_DIR (serveur partagé).
+  if [[ "$APP_DIR" == *staging* ]]; then backup_env=staging; else backup_env=production; fi
+  sudo /usr/local/sbin/mk-backup "$backup_env"
 fi
 
 echo "2/9 Récupération du code ($ref) dans une copie de travail temporaire"

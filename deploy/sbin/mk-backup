@@ -1,4 +1,12 @@
 #!/bin/sh
 # Enveloppe root de la sauvegarde — à installer en /usr/local/sbin/mk-backup (root:root, 755).
 # Permet à l'utilisateur de déploiement de déclencher une sauvegarde (via sudoers) sans accès aux secrets.
-exec /var/www/mk-delices/deploy/scripts/backup.sh "$@"
+# Usage : mk-backup [production|staging] (défaut : production). Un serveur qui héberge les deux
+# environnements a une configuration par environnement :
+#   production → /etc/mk-delices/backup.env          + /var/www/mk-delices
+#   staging    → /etc/mk-delices/backup-staging.env  + /var/www/mk-delices-staging
+case "${1:-production}" in
+  production) exec env MK_BACKUP_ENV=/etc/mk-delices/backup.env /var/www/mk-delices/deploy/scripts/backup.sh ;;
+  staging) exec env MK_BACKUP_ENV=/etc/mk-delices/backup-staging.env /var/www/mk-delices-staging/deploy/scripts/backup.sh ;;
+  *) echo "Usage : mk-backup [production|staging]" >&2; exit 64 ;;
+esac

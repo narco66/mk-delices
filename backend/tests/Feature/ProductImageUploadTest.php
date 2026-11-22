@@ -47,6 +47,22 @@ class ProductImageUploadTest extends TestCase
         }
     }
 
+    /** Audit du 22/11/2026 (W-01) : changer l'ordre n'écrase jamais le texte alternatif. */
+    public function test_reordering_does_not_touch_the_alt_text(): void
+    {
+        $product = $this->variant()->product;
+        $this->actingAs($this->staff(User::ROLE_COMMERCIAL))->post("/api/v1/admin/products/{$product->id}/images", [
+            'image' => UploadedFile::fake()->image('tiramisu.jpg', 800, 800), 'alt' => 'Ancien texte',
+        ], ['Accept' => 'application/json'])->assertCreated();
+        $image = $product->images()->firstOrFail();
+        $url = "/api/v1/admin/products/{$product->id}/images/{$image->id}";
+
+        $this->patchJson($url, ['alt' => 'Texte corrigé'])->assertOk();
+        $this->patchJson($url, ['sort_order' => 3])->assertOk()->assertJsonPath('data.alt', 'Texte corrigé');
+        $this->assertSame(3, $image->fresh()->sort_order);
+        $this->patchJson($url, [])->assertStatus(422);
+    }
+
     public function test_script_disguised_as_image_is_rejected(): void
     {
         $product = $this->variant()->product;

@@ -159,6 +159,16 @@ class PaymentTest extends TestCase
 
         $this->actingAs($this->staff(User::ROLE_ADMIN))->postJson("/api/v1/admin/refunds/{$refund->id}/approve")->assertOk();
         $this->assertSame(1, Invoice::query()->where('order_id', $order->id)->count(), 'Une facture, aucun avoir pour un trop-perçu.');
+
+        // Audit du 22/11/2026 (A-02) : une fois le trop-perçu restitué, la vente reste intégralement payée
+        // et la commande peut toujours être acceptée.
+        if ($refund->fresh()->status !== 'succeeded') {
+            $this->actingAs($this->staff(User::ROLE_ADMIN))->postJson("/api/v1/admin/refunds/{$refund->id}/complete", ['provider_ref' => 'VIR-TEST-1'])->assertOk();
+        }
+        $order->refresh();
+        $this->assertSame('succeeded', $refund->fresh()->status);
+        $this->assertSame('paid', $order->payment_status->value);
+        $this->transition($commercial, $order, 'accept')->assertOk();
     }
 
     /** Audit E2 / M9 : pas d'encaissement manuel si une session en ligne est ouverte, ni sur une commande annulée. */

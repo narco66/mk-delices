@@ -142,13 +142,16 @@ export function ProductPhotos({ product }: { product: Product }) {
     },
   })
   const updateImage = useMutation({
-    mutationFn: ({ imageId, alt, sort_order }: { imageId: string; alt: string; sort_order?: number }) => api.patch(`/admin/products/${product.id}/images/${imageId}`, { alt, sort_order }),
+    mutationFn: ({ imageId, alt }: { imageId: string; alt: string }) => api.patch(`/admin/products/${product.id}/images/${imageId}`, { alt }),
+    // Données rafraîchies : la valeur de référence du champ suit ce qui est réellement enregistré.
+    onSuccess: () => refresh(),
     onError: (e) => toast.error(errorMessage(e)),
   })
   const makeMain = useMutation({
+    // Seul l'ordre est envoyé : un texte alternatif modifié entre-temps n'est jamais écrasé.
     mutationFn: async (imageId: string) => {
       const ordered = [images.find((i) => i.id === imageId)!, ...images.filter((i) => i.id !== imageId)]
-      for (const [index, img] of ordered.entries()) await api.patch(`/admin/products/${product.id}/images/${img.id}`, { alt: img.alt, sort_order: index })
+      for (const [index, img] of ordered.entries()) await api.patch(`/admin/products/${product.id}/images/${img.id}`, { sort_order: index })
     },
     onSuccess: () => {
       toast.success('Photo principale mise à jour')

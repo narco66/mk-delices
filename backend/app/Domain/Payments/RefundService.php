@@ -183,7 +183,7 @@ class RefundService
         }
         $refund->update(['status' => 'succeeded', 'provider_ref' => $providerRef, 'completed_at' => now()]);
         $order->refunded_xof += $refund->amount_xof;
-        $order->payment_status = $order->refunded_xof >= $order->paid_xof ? OrderPaymentStatus::Refunded : OrderPaymentStatus::PartiallyRefunded;
+        $order->payment_status = $this->statusAfterRefund($order);
         $order->version++;
         $order->save();
         $this->journal->record($order, 'refund', $actor, null, ['event' => 'refund.completed', 'refund_id' => $refund->id, 'amount_xof' => $refund->amount_xof]);
@@ -192,5 +192,23 @@ class RefundService
         DB::afterCommit(fn () => IssueInvoice::dispatch($order->id, $refund->id));
 
         return $refund;
+    }
+
+    /**
+     * Statut de paiement après un remboursement (audit du 22/11/2026, A-02) : restituer un trop-perçu ne réduit
+     * pas la vente. Tant qu'aucun remboursement « vente » n'a eu lieu et que le net encaissé couvre le total,
+     * la commande reste « payée » (et peut donc toujours être acceptée).
+     */
+    private function statusAfterRefund(Order $order): OrderPaymentStatus
+    {
+        if ($order->refunded_xof >= $order->paid_xof) {
+            return OrderPaymentStatus::Refunded;
+        }
+        $saleRefunds = Refund::query()->where('order_id', $order->id)->where('status', 'succeeded')->where('kind', 'sale')->exists();
+        if (! $saleRefunds && $order->paid_xof - $order->refunded_xof >= $order->total_xof) {
+            return OrderPaymentStatus::Paid;
+        }
+
+        return OrderPaymentStatus::PartiallyRefunded;
     }
 }

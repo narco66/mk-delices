@@ -131,7 +131,12 @@ class ProductController extends Controller
     public function updateImage(Request $request, string $id, ProductImage $image): JsonResponse
     {
         abort_unless($image->product_id === $id, 404);
-        $data = $request->validate(['alt' => ['required', 'string', 'min:3', 'max:200'], 'sort_order' => ['nullable', 'integer', 'min:0']]);
+        // Texte alternatif facultatif quand seul l'ordre change : le réenvoyer risquait d'écraser une modification
+        // récente avec une valeur périmée (audit du 22/11/2026, W-01).
+        $data = $request->validate([
+            'alt' => ['required_without:sort_order', 'string', 'min:3', 'max:200'],
+            'sort_order' => ['required_without:alt', 'integer', 'min:0'],
+        ]);
         $image->update($data);
 
         return response()->json(['data' => ['id' => $image->id, 'alt' => $image->alt, 'sort_order' => $image->sort_order]]);

@@ -72,9 +72,10 @@ class DeliveryService
                 if ($locked->zone_id && ! $partner->zones()->whereKey($locked->zone_id)->exists()) {
                     throw DomainException::unprocessable('partner_not_eligible', 'Ce livreur ne dessert pas la zone de la commande.');
                 }
-                // Reste dû à encaisser à la remise : paiement à la livraison ou commande saisie sans paiement en ligne
-                // (téléphone, boutique). Une commande en ligne est forcément payée avant d'être acceptée (audit E4).
-                $cashDue = in_array($locked->payment_method, [null, GatewayRegistry::CASH_ON_DELIVERY], true) ? max(0, $locked->total_xof - $locked->paid_xof) : 0;
+                // Reste dû à encaisser à la remise : tout ce qui n'est pas encore payé, quel que soit le moyen noté
+                // (audit du 22/11/2026, A-01). Une tentative de paiement en ligne abandonnée sur une commande saisie
+                // par l'équipe change le moyen noté, mais ne doit jamais faire partir une commande sans encaissement.
+                $cashDue = $locked->payment_status === OrderPaymentStatus::Paid ? 0 : max(0, $locked->total_xof - $locked->paid_xof);
                 $assignment = DeliveryAssignment::query()->create([
                     'order_id' => $locked->id,
                     'partner_id' => $partner->id,

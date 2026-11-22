@@ -66,6 +66,26 @@ describe('client API', () => {
     expect(spy).toHaveBeenCalledTimes(3)
   })
 
+  it('une coupure pendant la demande du jeton CSRF ne bloque pas les essais suivants', async () => {
+    // Audit du 22/11/2026 (W-03) : l'échec n'est plus gardé en mémoire ; message réseau au lieu d'une erreur technique.
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockImplementationOnce(async () => {
+        document.cookie = 'XSRF-TOKEN=neuf'
+        return new Response(null, { status: 204 })
+      })
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data: { ok: true } }), { status: 200 }))
+
+    const first = (await api.post('/x', {}).catch((e: unknown) => e)) as ApiError
+    expect(first).toBeInstanceOf(ApiError)
+    expect(first.status).toBe(0)
+
+    await expect(api.post('/x', {})).resolves.toEqual({ data: { ok: true } })
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    expect(fetchMock.mock.calls[1][0]).toBe('/sanctum/csrf-cookie')
+  })
+
   it('signale une erreur réseau lisible', async () => {
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('Failed to fetch'))
     await expect(api.get('/x')).rejects.toMatchObject({ code: 'network_error', status: 0 })

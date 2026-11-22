@@ -163,5 +163,15 @@
 - **Tests** : backend 204/204 (12 nouveaux, `AccountFeaturesTest`). Frontend 29/29. E2E `compte.spec.ts` (connexion par téléphone, Club MK, recommander, favoris, mot de passe oublié, suppression du compte) au vert sur mobile et ordinateur.
 - **Documentation** : `API-MOBILE.md` (§2, §3 et §5 Notifications push) et contrat OpenAPI.
 
+## 22/11/2026 — Audit complet et lot 1 de corrections
+- **Audit** : [`AUDIT-COMPLET-2026-11-22.md`](AUDIT-COMPLET-2026-11-22.md). 1 constat élevé, 9 moyens, 13 faibles. Aucune faille d'autorisation.
+- **Lot 1 corrigé** :
+  - **A-01** : une commande non payée a toujours son montant à encaisser.
+  - **A-02** : un trop-perçu restitué ne bloque plus l'acceptation.
+  - **W-01** : un texte alternatif de photo n'est plus écrasé.
+  - **W-03** : une coupure réseau ne bloque plus les actions.
+  - **W-04** : TVA décimale, paramètres enregistrés tout ou rien.
+- Détail et tests : §9 du rapport. Backend 208/208, frontend 30/30.
+
 ## Travaux restants (voir rapport final §15)
 Décisions métier/juridiques, contrats PSP, hébergement, sauvegardes, tests de charge, test avec lecteur d'écran, exécution réelle du déploiement et du test de restauration une fois l'hébergeur choisi.

@@ -90,12 +90,22 @@ function readCookie(name: string): string | null {
   return match ? decodeURIComponent(match[1]) : null
 }
 
-/** Obtient un cookie CSRF (une seule requête à la fois). `force` : en redemander un même si un cookie existe (expiré). */
+/**
+ * Obtient un cookie CSRF (une seule requête à la fois). `force` : en redemander un même si un cookie existe (expiré).
+ * Un échec (réseau coupé, délai dépassé) est libéré pour que l'essai suivant reparte de zéro, et signalé avec le
+ * même message que les autres erreurs réseau (audit du 22/11/2026, W-03).
+ */
 async function ensureCsrf(force = false): Promise<void> {
   if (!force && readCookie('XSRF-TOKEN')) return
-  csrfReady ??= fetch('/sanctum/csrf-cookie', { credentials: 'include' }).then(() => undefined)
+  csrfReady ??= fetch('/sanctum/csrf-cookie', { credentials: 'include', signal: AbortSignal.timeout(TIMEOUT_MS) })
+    .then(() => undefined)
+    .catch((error: unknown) => {
+      throw networkError(error)
+    })
+    .finally(() => {
+      csrfReady = null
+    })
   await csrfReady
-  csrfReady = null
 }
 
 export async function request<T>(

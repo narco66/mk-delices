@@ -85,4 +85,17 @@ class DecisionParametersTest extends TestCase
         $this->putJson('/api/v1/admin/settings', ['values' => ['payments.cash_on_delivery_max_xof' => 25000]])->assertOk();
         $this->assertSame(25000, app(Settings::class)->get('payments.cash_on_delivery_max_xof'));
     }
+
+    /** Audit du 22/11/2026 (W-04) : tout ou rien, erreur rattachée au paramètre, taux de TVA décimal accepté. */
+    public function test_settings_are_saved_all_or_nothing_with_the_faulty_key_named(): void
+    {
+        $this->actingAs($this->staff(User::ROLE_ADMIN))->putJson('/api/v1/admin/settings', ['values' => [
+            'invoicing.vat_rate_percent' => 5.5,
+            'business.instagram_url' => 'http://instagram.com/mkdelices',
+        ]])->assertStatus(422)->assertJsonStructure(['error' => ['details' => ['values.business.instagram_url']]]);
+        $this->assertSame(18, app(Settings::class)->get('invoicing.vat_rate_percent'), 'Rien n\'est enregistré si une valeur est refusée.');
+
+        $this->putJson('/api/v1/admin/settings', ['values' => ['invoicing.vat_rate_percent' => 5.5]])->assertOk();
+        $this->assertSame(5.5, app(Settings::class)->get('invoicing.vat_rate_percent'));
+    }
 }

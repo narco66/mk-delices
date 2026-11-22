@@ -22,6 +22,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
+use Illuminate\Validation\ValidationException;
 use Spatie\Permission\Models\Role;
 
 /** Pilotage, clients, avis, contenus, utilisateurs, paramètres, journaux, notifications. */
@@ -203,11 +204,26 @@ class BackOfficeController extends Controller
     public function saveSettings(Request $request): JsonResponse
     {
         $data = $request->validate(['values' => ['required', 'array']]);
+        // Tout ou rien (audit du 22/11/2026, W-04) : chaque valeur est d'abord validée, et l'erreur est rattachée
+        // au paramètre concerné (« values.<clé> ») ; rien n'est enregistré si une seule est refusée.
+        $errors = [];
         foreach ($data['values'] as $key => $value) {
-            $before = $this->settings->get($key);
-            $this->settings->set($key, $this->validateSetting($key, $value));
-            $this->audit->log('setting.updated', null, [$key => $before], [$key => $value]);
+            try {
+                $this->validateSetting($key, $value);
+            } catch (ValidationException $e) {
+                $errors["values.{$key}"] = $e->errors()['value'] ?? [$e->getMessage()];
+            }
         }
+        if ($errors !== []) {
+            throw ValidationException::withMessages($errors);
+        }
+        DB::transaction(function () use ($data) {
+            foreach ($data['values'] as $key => $value) {
+                $before = $this->settings->get($key);
+                $this->settings->set($key, $value);
+                $this->audit->log('setting.updated', null, [$key => $before], [$key => $value]);
+            }
+        });
 
         return $this->settings();
     }

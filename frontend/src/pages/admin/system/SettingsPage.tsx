@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/Button'
 import { Badge, Card, PageHeader } from '@/components/ui/Display'
 import { ErrorState, Notice, Skeleton } from '@/components/ui/Feedback'
 import { Field, Input, Select, Textarea } from '@/components/ui/Form'
-import { api } from '@/lib/api'
+import { api, ApiError } from '@/lib/api'
 import { formatXof, PAYMENT_LABELS } from '@/lib/format'
 import { TagInput, Toggle } from '../catalog/shared'
 import { applyServerErrors } from '../catalog/utils'
@@ -33,6 +33,7 @@ const GROUP_LABELS: Record<string, string> = {
   delivery: 'Livraison',
   quality: 'Qualité et chaîne du froid',
   invoicing: 'Facturation et TVA',
+  preparation: 'Préparation',
   loyalty: 'Club MK (fidélité)',
 }
 const DAYS: [string, string][] = [
@@ -54,9 +55,20 @@ const INTEGER_KEYS = [
   'ordering.max_qty_per_line',
   'quality.cold_chain_max_minutes',
   'delivery.failed_fee_percent',
-  'invoicing.vat_rate_percent',
+  'delivery.accept_timeout_minutes',
+  'delivery.client_fault_min_wait_minutes',
+  'preparation.undo_window_minutes',
   'loyalty.orders_per_reward',
 ]
+/** Valeurs décimales (virgule acceptée) : « 5,5 » ne doit jamais devenir 55 (audit du 22/11/2026, W-04). */
+const DECIMAL_KEYS = ['invoicing.vat_rate_percent']
+
+/** Saisie décimale → nombre envoyé à l'API (null si vide ou illisible, refusé ensuite par le serveur). */
+function toDecimal(value: unknown): number | null {
+  if (typeof value === 'number') return value
+  const n = Number(String(value ?? '').trim().replace(',', '.'))
+  return String(value ?? '').trim() === '' || !Number.isFinite(n) ? null : n
+}
 const LIST_KEYS = ['ordering.closed_dates', 'delivery.proof_types', 'delivery.incident_reasons', 'delivery.client_fault_reasons']
 const LONG_TEXT_KEYS = ['policies.cancellation', 'invoicing.footer']
 const SELECT_KEYS: Record<string, [string, string][]> = {
@@ -76,6 +88,8 @@ export function SettingsPage() {
   const [edits, setEdits] = useState<Record<string, unknown>>({})
   const values = useMemo(() => ({ ...Object.fromEntries((data ?? []).map((s) => [s.key, s.value])), ...edits }), [data, edits])
   const dirty = useMemo(() => new Set(Object.keys(edits)), [edits])
+  // Erreurs renvoyées par le serveur, par paramètre (« values.<clé> »).
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
   const groups = useMemo(() => {
     const map = new Map<string, SettingItem[]>()
@@ -84,18 +98,35 @@ export function SettingsPage() {
   }, [data])
 
   const save = useMutation({
-    mutationFn: () => api.put('/admin/settings', { values: Object.fromEntries([...dirty].map((k) => [k, values[k]])) }),
+    mutationFn: () => api.put('/admin/settings', { values: Object.fromEntries([...dirty].map((k) => [k, DECIMAL_KEYS.includes(k) ? toDecimal(values[k]) : values[k]])) }),
     onSuccess: () => {
       toast.success('Paramètres enregistrés')
       setEdits({})
+      setFieldErrors({})
       queryClient.invalidateQueries({ queryKey: ['admin', 'settings'] })
       queryClient.invalidateQueries({ queryKey: ['config'] })
     },
-    onError: (e) => applyServerErrors(e),
+    onError: (e) => {
+      // Rien n'est enregistré si une valeur est refusée : l'erreur s'affiche sous le paramètre concerné.
+      if (e instanceof ApiError && e.code === 'validation_failed') {
+        const byKey = Object.fromEntries(
+          Object.entries(e.fieldErrors)
+            .filter(([field]) => field.startsWith('values.'))
+            .map(([field, messages]) => [field.slice('values.'.length), messages[0]]),
+        )
+        if (Object.keys(byKey).length) {
+          setFieldErrors(byKey)
+          toast.error('Aucun paramètre enregistré : corrigez les valeurs signalées.')
+          return
+        }
+      }
+      applyServerErrors(e)
+    },
   })
 
   const set = (key: string, value: unknown) => {
     setEdits((e) => ({ ...e, [key]: value }))
+    setFieldErrors((current) => Object.fromEntries(Object.entries(current).filter(([k]) => k !== key)))
   }
 
   if (error) return <ErrorState error={error} onRetry={() => refetch()} />
@@ -144,6 +175,11 @@ export function SettingsPage() {
                     </div>
                     <p className="mb-2 font-mono text-[11px] text-cocoa-400">{s.key}</p>
                     <SettingEditor setting={s} value={values[s.key]} onChange={(v) => set(s.key, v)} />
+                    {fieldErrors[s.key] && (
+                      <p className="mt-1 text-sm text-error-600" role="alert">
+                        {fieldErrors[s.key]}
+                      </p>
+                    )}
                   </div>
                   ),
                 )}
@@ -186,6 +222,17 @@ function SettingEditor({ setting, value, onChange }: { setting: SettingItem; val
     )
   }
   if (typeof setting.value === 'boolean' || typeof value === 'boolean') return <Toggle checked={!!value} onChange={onChange} label={value ? 'Activé' : 'Désactivé'} />
+  if (DECIMAL_KEYS.includes(key)) {
+    return (
+      <Input
+        aria-label={setting.description ?? key}
+        className="max-w-48"
+        inputMode="decimal"
+        value={value === null || value === undefined ? '' : String(value).replace('.', ',')}
+        onChange={(e) => onChange(e.target.value.replace(/[^\d,.]/g, ''))}
+      />
+    )
+  }
   if (INTEGER_KEYS.includes(key)) {
     return (
       <Input

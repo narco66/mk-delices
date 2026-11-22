@@ -112,8 +112,22 @@ Le contrôle de mise en production ne mentionne pas encore l'interrupteur « pai
 
 | Lot | Contenu | Qui |
 |---|---|---|
-| **1 — immédiat** | A-01, A-02, W-01, W-03, W-04 | Technique |
+| **1 — immédiat** | A-01, A-02, W-01, W-03, W-04 — ✅ **corrigés le 22/11/2026** (voir §9) | Technique |
 | 2 — court terme | S-10, S-12, S-13, S-14, S-15, S-16, S-18, W-02, W-05, W-06, W-07, A-04 à A-08, contrôle de mise en production | Technique |
 | 3 — serveur | I-01 (redémarrage), I-02, I-03 | Technique, à un moment choisi |
 | 4 — décisions | S-11 (vérification du téléphone), S-17 (durées de conservation), I-04 (stockage externe), I-05 (SMTP), A-03 avant d'ouvrir le retrait sur place | MK Délices |
 | 5 — confort | W-08, W-09 | Technique |
+
+## 9. Corrections du lot 1 (22/11/2026)
+
+Chaque correction est couverte par un test qui **échoue sans elle** (vérifié pour A-01 et A-02).
+
+| ID | Correction | Test |
+|---|---|---|
+| A-01 | Le reste à encaisser vaut `total - payé` dès que la commande n'est pas payée, quel que soit le moyen noté (`DeliveryService::assign`) | `CashCollectionTest` : tentative abandonnée → le montant complet est à encaisser ; commande payée → 0 |
+| A-02 | Après un remboursement, la commande reste « payée » tant qu'aucun remboursement de vente n'a eu lieu et que le net encaissé couvre le total (`RefundService::statusAfterRefund`) | `PaymentTest` (trop-perçu) : statut « payée » et commande acceptable après restitution |
+| W-01 | L'API accepte un changement d'ordre sans texte alternatif ; « Mettre en premier » n'envoie plus que l'ordre ; les données sont rafraîchies après chaque modification | `ProductImageUploadTest` |
+| W-03 | Un échec du jeton anti-falsification (CSRF) est libéré : l'essai suivant repart de zéro. Délai maximal et message « connexion impossible » | `api.test.ts` |
+| W-04 | Taux de TVA saisi en décimal (« 5,5 ») ; paramètres enregistrés tout ou rien ; erreur affichée sous le paramètre concerné. Au passage : 3 paramètres numériques saisis comme des nombres, titre « Préparation » (W-09 en partie) | `DecisionParametersTest` + E2E `administration.spec.ts` |
+
+Résultats : backend 208/208, frontend 30/30, E2E paramètres et catalogue au vert (mobile et ordinateur).

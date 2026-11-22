@@ -181,5 +181,20 @@
   - **Site web :** écran de retour de paiement stable, sans relance par « retour arrière », panier vidé à la déconnexion, redirection vérifiée.
   - Backend 220/220, frontend 32/32.
 
+## 22/11/2026 — Production installée sur mk-delices.com (fermée au public)
+- Même VPS que la préproduction. Base `mk_delices` (compte `mk_prod`), HTTPS Let's Encrypt, `www` redirigé, worker, planificateur, sauvegarde chiffrée quotidienne propre à la production (`mk-backup production`).
+- Site **fermé par mot de passe** jusqu'à la décision go/no-go ; `/health` et `/up` restent ouverts.
+- Administrateur réel créé. Aucune donnée de démonstration. Périmètre desservi : ville de Dakar.
+- **`mk:go-live-check` : 4 points bloquants**, à lever par MK Délices :
+  - SMTP ;
+  - raison sociale, NINEA, RCCM ;
+  - zones de livraison validées ;
+  - un moyen de paiement réel (paiement à la livraison ou Wave).
+- À faire aussi :
+  - autoriser `https://mk-delices.com` dans la clé MapTiler ;
+  - numéro WhatsApp ;
+  - sauvegarde externe ;
+  - Firebase.
+
 ## Travaux restants (voir rapport final §15)
 Décisions métier/juridiques, contrats PSP, hébergement, sauvegardes, tests de charge, test avec lecteur d'écran, exécution réelle du déploiement et du test de restauration une fois l'hébergeur choisi.

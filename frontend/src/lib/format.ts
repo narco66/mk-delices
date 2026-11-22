@@ -8,7 +8,15 @@ export function formatXof(amount: number | null | undefined): string {
   return `${xof.format(amount)}\u202FFCFA`
 }
 
-export function formatDateTime(iso: string | null | undefined, opts: Intl.DateTimeFormatOptions = {}): string {
+/**
+ * Date et heure de Dakar. Seuls `dateStyle` / `timeStyle` sont acceptés : Intl refuse de les combiner avec
+ * des options de composants (`second`, `hour`…) et lève une TypeError qui faisait planter le journal d'audit.
+ * Heure avec secondes : `{ timeStyle: 'medium' }`.
+ */
+export function formatDateTime(
+  iso: string | null | undefined,
+  opts: Pick<Intl.DateTimeFormatOptions, 'dateStyle' | 'timeStyle'> = {},
+): string {
   if (!iso) return '—'
   return new Intl.DateTimeFormat('fr-FR', { timeZone: TZ, dateStyle: 'medium', timeStyle: 'short', ...opts }).format(new Date(iso))
 }

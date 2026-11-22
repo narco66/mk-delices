@@ -64,7 +64,7 @@ export function AuditPage() {
                         {log.actor?.name ?? 'Système'} · {log.target_type ?? '—'} {log.target_id ? `#${log.target_id.slice(0, 8)}` : ''}
                       </p>
                     </div>
-                    <p className="shrink-0 text-xs text-cocoa-500">{formatDateTime(log.created_at, { second: '2-digit' })}</p>
+                    <p className="shrink-0 text-xs text-cocoa-500">{formatDateTime(log.created_at, { timeStyle: 'medium' })}</p>
                   </summary>
                   <div className="grid gap-3 border-t border-cocoa-100/60 px-4 py-3 md:grid-cols-2">
                     <div>

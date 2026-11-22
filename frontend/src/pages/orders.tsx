@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CheckCircle2, Circle, Clock, CreditCard, FileText, FlaskConical, Loader2, MessageCircle, PackageCheck, ShieldCheck, Star, Undo2, XCircle } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
@@ -135,7 +135,7 @@ export function ConfirmationPage() {
 /** UX-06 — Paiement : redirection vers le prestataire ; la confirmation vient uniquement du serveur. */
 export function PaymentPage() {
   const { reference = '' } = useParams()
-  const [params] = useSearchParams()
+  const [params, setParams] = useSearchParams()
   const token = useTrackingToken(reference)
   const { data: order, isLoading, error } = useOrder(reference, token)
   const { data: config } = usePublicConfig()
@@ -163,9 +163,14 @@ export function PaymentPage() {
   useEffect(() => {
     if (params.get('auto') === '1' && order?.can_pay && method && !autoStarted.current) {
       autoStarted.current = true
+      // Audit W-05 : « auto » retiré de l'adresse AVANT de partir chez le prestataire ; revenir en arrière
+      // depuis sa page n'ouvre donc pas un second paiement.
+      const next = new URLSearchParams(params)
+      next.delete('auto')
+      setParams(next, { replace: true })
       pay.mutate(method)
     }
-  }, [params, order, method, pay])
+  }, [params, setParams, order, method, pay])
 
   if (isLoading) return <Spinner />
   if (error || !order) return <OrderNotFound error={error} />
@@ -218,26 +223,33 @@ export function PaymentPage() {
   )
 }
 
+/** Nombre de vérifications automatiques (toutes les 5 s) sur l'écran de retour de paiement. */
+const VERIFY_ATTEMPTS = 12
+
 /** Retour du prestataire : on ne conclut jamais au succès sur la seule base de cette page (T-009). */
 export function PaymentReturnPage() {
   const { reference = '' } = useParams()
   const token = useTrackingToken(reference)
   const queryClient = useQueryClient()
   const [attempts, setAttempts] = useState(0)
-  const { data: order, error, isLoading } = useQuery({
+  const [maxAttempts, setMaxAttempts] = useState(VERIFY_ATTEMPTS)
+  const { data: order, error, isLoading, isFetching } = useQuery({
     queryKey: ['order', reference, 'refresh', attempts],
     queryFn: async () => (await api.post<{ data: PublicOrder }>(`/orders/${reference}/payments/refresh`, {}, { headers: trackingHeaders(token) })).data,
     retry: false,
+    // Audit W-02 : l'affichage précédent reste en place pendant chaque nouvelle vérification (pas de
+    // clignotement, pas de nouvelle annonce aux lecteurs d'écran, bouton « Suivre ma commande » conservé).
+    placeholderData: keepPreviousData,
   })
   useSeo({ title: 'Vérification du paiement', noindex: true })
 
   useEffect(() => {
-    if (order?.payment_status === 'pending' && attempts < 12) {
+    if (order?.payment_status === 'pending' && attempts < maxAttempts) {
       const t = setTimeout(() => setAttempts((a) => a + 1), 5000)
       return () => clearTimeout(t)
     }
     if (order) queryClient.setQueryData(['order', reference], order)
-  }, [order, attempts, queryClient, reference])
+  }, [order, attempts, maxAttempts, queryClient, reference])
 
   if (isLoading && !order) return <Spinner label="Vérification auprès du prestataire…" />
   if (error || !order) return <OrderNotFound error={error} />
@@ -251,11 +263,19 @@ export function PaymentReturnPage() {
     partially_refunded: { icon: <Undo2 className="mx-auto size-14 text-cocoa-500" aria-hidden />, title: 'Remboursement partiel', text: 'Une partie du montant payé vous a été remboursée. Consultez le suivi de commande pour le détail.' },
     unpaid: { icon: <Clock className="mx-auto size-14 text-caramel-600" aria-hidden />, title: 'Aucun paiement reçu', text: 'Aucun paiement n\'a été confirmé pour cette commande. Vous pouvez relancer le paiement depuis le suivi.' },
   }
-  const current = view[state] ?? {
-    icon: <Loader2 className="mx-auto size-14 animate-spin text-caramel-600" aria-hidden />,
-    title: 'Paiement en vérification',
-    text: 'Nous attendons la confirmation du prestataire. Cette page se met à jour automatiquement ; vous pouvez aussi revenir plus tard via votre lien de suivi.',
-  }
+  // Vérifications automatiques terminées sans réponse : le texte ne promet plus de mise à jour automatique.
+  const gaveUp = state === 'pending' && attempts >= maxAttempts && !isFetching
+  const current = view[state] ?? (gaveUp
+    ? {
+        icon: <Clock className="mx-auto size-14 text-caramel-600" aria-hidden />,
+        title: 'Confirmation en attente',
+        text: "Le prestataire n'a pas encore confirmé votre paiement. Ne payez pas une seconde fois : vérifiez à nouveau dans quelques minutes, ou suivez votre commande, elle sera mise à jour dès la confirmation.",
+      }
+    : {
+        icon: <Loader2 className="mx-auto size-14 animate-spin text-caramel-600" aria-hidden />,
+        title: 'Paiement en vérification',
+        text: 'Nous attendons la confirmation du prestataire. Cette page se met à jour automatiquement ; vous pouvez aussi revenir plus tard via votre lien de suivi.',
+      })
   return (
     <div className="container-page max-w-xl py-16 text-center">
       {current.icon}
@@ -265,6 +285,16 @@ export function PaymentReturnPage() {
       </p>
       <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
         {(state === 'failed' || state === 'unpaid') && order.can_pay && <ButtonLink to={`/paiement/${reference}`}>Réessayer le paiement</ButtonLink>}
+        {gaveUp && (
+          <Button
+            onClick={() => {
+              setMaxAttempts(attempts + VERIFY_ATTEMPTS)
+              setAttempts((a) => a + 1)
+            }}
+          >
+            Vérifier à nouveau
+          </Button>
+        )}
         <ButtonLink to={`/suivi/${reference}`} variant="secondary">
           Suivre ma commande
         </ButtonLink>

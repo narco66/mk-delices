@@ -172,6 +172,14 @@
   - **W-03** : une coupure réseau ne bloque plus les actions.
   - **W-04** : TVA décimale, paramètres enregistrés tout ou rien.
 - Détail et tests : §9 du rapport. Backend 208/208, frontend 30/30.
+- **Lot 2 corrigé** (détail au §10 du rapport) :
+  - **Sécurité de la connexion :** limite par compte, numéro unique, email en minuscules, règle de l'équipe, empreinte HMAC.
+  - **En-tête Host :** contrôlé par Laravel et nginx.
+  - **Téléphones des notifications :** enregistrés depuis l'application seulement.
+  - **Commandes :** retrait sur place sans zone, brouillons WhatsApp revérifiés.
+  - **Paiements :** prestataire appelé hors verrou, rapprochement ordonné.
+  - **Site web :** écran de retour de paiement stable, sans relance par « retour arrière », panier vidé à la déconnexion, redirection vérifiée.
+  - Backend 220/220, frontend 32/32.
 
 ## Travaux restants (voir rapport final §15)
 Décisions métier/juridiques, contrats PSP, hébergement, sauvegardes, tests de charge, test avec lecteur d'écran, exécution réelle du déploiement et du test de restauration une fois l'hébergeur choisi.

@@ -84,6 +84,8 @@ class AuthController extends Controller
 
     public function register(Request $request): JsonResponse
     {
+        // Audit S-14 : email comparé en minuscules (sinon « Awa@… » passait la règle « unique » puis échouait en 500).
+        self::lowercaseEmail($request);
         $data = $request->validate([
             // Renseigné par l'application mobile : un jeton est renvoyé au lieu d'ouvrir une session web.
             'device_name' => ['nullable', 'string', 'min:2', 'max:100'],
@@ -181,6 +183,11 @@ class AuthController extends Controller
             'email' => ['required', 'email', 'max:160'],
             'password' => ['required', 'confirmed', PasswordRule::min(10)->letters()->numbers()],
         ]);
+        // Audit S-15 : un membre de l'équipe garde la règle de l'équipe (12 caractères, majuscules et minuscules).
+        $target = User::query()->where('email', mb_strtolower($data['email']))->first();
+        if ($target?->isStaff()) {
+            $request->validate(['password' => [self::staffPasswordRule()]]);
+        }
         $status = Password::broker()->reset(
             ['email' => mb_strtolower($data['email']), 'token' => $data['token'], 'password' => $data['password']],
             function (User $user, string $password) {
@@ -195,6 +202,34 @@ class AuthController extends Controller
         }
 
         return response()->json(['data' => ['message' => 'Votre mot de passe a été modifié. Vous pouvez vous connecter.']]);
+    }
+
+    /** Règle des mots de passe de l'équipe (back-office), plus stricte que celle des clients. */
+    public static function staffPasswordRule(): PasswordRule
+    {
+        return PasswordRule::min(12)->letters()->mixedCase()->numbers();
+    }
+
+    /** Email saisi passé en minuscules AVANT validation (règle « unique » insensible à la casse). */
+    public static function lowercaseEmail(Request $request): void
+    {
+        if (is_string($request->input('email'))) {
+            $request->merge(['email' => mb_strtolower(trim($request->input('email')))]);
+        }
+    }
+
+    /**
+     * Identifiant de connexion sous une forme unique : email en minuscules, numéro sénégalais au format
+     * +221…, sinon le texte saisi en minuscules. Sert à la limitation des tentatives par compte (audit S-10).
+     */
+    public static function normalizedIdentifier(mixed $raw): string
+    {
+        $identifier = mb_strtolower(trim(is_string($raw) ? $raw : ''));
+        if ($identifier === '' || str_contains($identifier, '@')) {
+            return $identifier;
+        }
+
+        return Phone::normalizeSenegal($identifier) ?? $identifier;
     }
 
     /** Un numéro de téléphone ne peut désigner qu'un seul compte (connexion par téléphone). */
@@ -229,12 +264,14 @@ class AuthController extends Controller
         $phone = $byEmail ? null : Phone::normalizeSenegal($identifier);
         $user = match (true) {
             $byEmail => User::query()->where('email', mb_strtolower($identifier))->first(),
-            $phone !== null => User::query()->where('phone', $phone)->whereNull('anonymized_at')->orderByDesc('last_login_at')->first(),
+            // Numéro unique (index partiel, audit S-13) ; tri conservé par prudence, comptes jamais connectés en dernier.
+            $phone !== null => User::query()->where('phone', $phone)->whereNull('anonymized_at')->orderByRaw('last_login_at desc nulls last')->first(),
             default => null,
         };
         if (! Hash::check($data['password'], $user?->password ?? self::DUMMY_HASH) || $user === null) {
             $this->audit->log('auth.login_failed', null, null, [
-                'identifier_hash' => hash('sha256', $byEmail ? mb_strtolower($identifier) : ($phone ?? $identifier)),
+                // Audit S-16 : empreinte à clé secrète (un simple SHA-256 d'un numéro se retrouve par essais).
+                'identifier_hash' => hash_hmac('sha256', self::normalizedIdentifier($identifier), (string) config('app.key')),
                 'method' => $byEmail ? 'email' : 'phone',
                 'channel' => $channel,
             ]);

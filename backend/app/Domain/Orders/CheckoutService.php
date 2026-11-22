@@ -209,6 +209,7 @@ class CheckoutService
                 throw DomainException::unprocessable('details_incomplete', 'Choisissez un créneau avant confirmation.');
             }
             $this->repriceFromCatalog($locked);
+            $this->assertZoneStillServes($locked);
             // Même délai de préparation que pour une commande en ligne (BR-004, audit lot 3).
             $this->slots->reserve($locked->slot_start_at->toIso8601ZuluString(), $this->leadMinutesFor($locked), $locked->id);
             if ($locked->customer_id === null) {
@@ -246,6 +247,10 @@ class CheckoutService
                 $locked->customer_snapshot = $snapshot;
             }
             if (array_key_exists('delivery', $data) && $data['delivery'] !== null) {
+                // Audit A-04 : une commande à retirer en boutique n'a ni zone ni frais de livraison.
+                if ($locked->fulfillment_type !== 'delivery') {
+                    throw DomainException::unprocessable('pickup_has_no_zone', "Cette commande est à retirer en boutique : elle n'a pas d'adresse de livraison.");
+                }
                 $zone = DeliveryZone::query()->where('active', true)->find($data['delivery']['zone_id'] ?? null);
                 if (! $zone) {
                     throw DomainException::unprocessable('zone_unavailable', 'Zone de livraison inactive ou inconnue.');
@@ -337,6 +342,24 @@ class CheckoutService
         return max((int) $this->settings->get('ordering.min_lead_minutes', 240), $prep) + $extra;
     }
 
+    /**
+     * Audit A-05 : un brouillon WhatsApp confirmé respecte les mêmes règles qu'une commande en ligne
+     * (QuoteService) : zone toujours desservie et minimum de commande de la zone atteint.
+     */
+    private function assertZoneStillServes(Order $order): void
+    {
+        if ($order->fulfillment_type !== 'delivery') {
+            return;
+        }
+        $zone = DeliveryZone::query()->find($order->zone_id);
+        if (! $zone || ! $zone->active) {
+            throw DomainException::unprocessable('zone_unavailable', "Cette zone n'est pas desservie actuellement. Choisissez une autre zone avant de confirmer.");
+        }
+        if ($zone->min_order_xof !== null && $order->subtotal_xof < $zone->min_order_xof) {
+            throw DomainException::unprocessable('min_order_not_reached', "Le minimum de commande pour la zone {$zone->name} ({$zone->min_order_xof} FCFA) n'est pas atteint.");
+        }
+    }
+
     private function repriceFromCatalog(Order $order): void
     {
         $subtotal = 0;
@@ -349,6 +372,8 @@ class CheckoutService
                 'unit_price_xof' => $variant->price_xof,
                 'line_total_xof' => $variant->price_xof * $item->qty,
                 'allergens_snapshot' => $variant->product->allergens ?? [],
+                // Audit A-05 : délai de préparation du jour (le créneau est vérifié avec ce délai).
+                'prep_minutes_snapshot' => $variant->prep_minutes,
             ]);
             $subtotal += $variant->price_xof * $item->qty;
         }

@@ -19,6 +19,8 @@ import { LocationPicker } from '@/features/maps/LocationPicker'
 import { useZones } from '@/hooks/usePublicData'
 import { useSeo } from '@/hooks/useSeo'
 import { api, ApiError } from '@/lib/api'
+import { safeRedirect } from '@/lib/redirect'
+import { orderStorage } from '@/lib/storage'
 import { cn } from '@/lib/cn'
 import { formatDateTime, formatSlot, formatXof } from '@/lib/format'
 import { InvoiceList } from '@/features/invoices/InvoiceList'
@@ -28,10 +30,6 @@ function homeFor(me: Me): string {
   if (me.is_staff) return '/admin'
   if (me.is_courier) return '/livreur'
   return '/compte'
-}
-
-function safeRedirect(target: string | null): string | null {
-  return target && target.startsWith('/') && !target.startsWith('//') ? target : null
 }
 
 const loginSchema = z.object({
@@ -54,7 +52,7 @@ export function LoginPage() {
       const me = await login(v.identifier, v.password, v.remember)
       navigate(safeRedirect(params.get('redirect')) ?? homeFor(me), { replace: true })
     } catch (e) {
-      setServerError(e instanceof ApiError && e.status === 429 ? 'Trop de tentatives. Patientez une minute avant de réessayer.' : errorMessage(e))
+      setServerError(e instanceof ApiError && e.status === 429 ? 'Trop de tentatives. Patientez avant de réessayer, ou utilisez « Mot de passe oublié ».' : errorMessage(e))
     }
   })
 
@@ -329,8 +327,17 @@ export function AccountPage() {
           variant="ghost"
           icon={<LogOut className="size-4" />}
           onClick={async () => {
+            const tracked = orderStorage.all().length
             await logout()
             navigate('/')
+            // Audit W-06 : appareil partagé, les liens de suivi mémorisés peuvent être oubliés en un geste.
+            if (tracked > 0) {
+              toast('Vous êtes déconnecté.', {
+                description: `${tracked} commande(s) restent consultables sur cet appareil.`,
+                action: { label: 'Les oublier', onClick: () => orderStorage.clear() },
+                duration: 10_000,
+              })
+            }
           }}
         >
           Se déconnecter
@@ -545,7 +552,7 @@ function DeleteAccount() {
     onSuccess: async () => {
       // Accueil d'abord : sinon la page compte, protégée, redirige vers la connexion à la fin de session.
       navigate('/', { replace: true })
-      await logout()
+      await logout({ forgetDevice: true })
       toast.success('Votre compte a été supprimé. Merci d’avoir fait confiance à MK Délices.')
     },
     onError: (e) => toast.error(errorMessage(e)),

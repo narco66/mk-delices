@@ -113,7 +113,7 @@ Le contrôle de mise en production ne mentionne pas encore l'interrupteur « pai
 | Lot | Contenu | Qui |
 |---|---|---|
 | **1 — immédiat** | A-01, A-02, W-01, W-03, W-04 — ✅ **corrigés le 22/11/2026** (voir §9) | Technique |
-| 2 — court terme | S-10, S-12, S-13, S-14, S-15, S-16, S-18, W-02, W-05, W-06, W-07, A-04 à A-08, contrôle de mise en production | Technique |
+| 2 — court terme | S-10, S-12, S-13, S-14, S-15, S-16, S-18, W-02, W-05, W-06, W-07, A-04 à A-08, contrôle de mise en production — ✅ **corrigés le 22/11/2026** (voir §10) | Technique |
 | 3 — serveur | I-01 (redémarrage), I-02, I-03 | Technique, à un moment choisi |
 | 4 — décisions | S-11 (vérification du téléphone), S-17 (durées de conservation), I-04 (stockage externe), I-05 (SMTP), A-03 avant d'ouvrir le retrait sur place | MK Délices |
 | 5 — confort | W-08, W-09 | Technique |
@@ -131,3 +131,35 @@ Chaque correction est couverte par un test qui **échoue sans elle** (vérifié 
 | W-04 | Taux de TVA saisi en décimal (« 5,5 ») ; paramètres enregistrés tout ou rien ; erreur affichée sous le paramètre concerné. Au passage : 3 paramètres numériques saisis comme des nombres, titre « Préparation » (W-09 en partie) | `DecisionParametersTest` + E2E `administration.spec.ts` |
 
 Résultats : backend 208/208, frontend 30/30, E2E paramètres et catalogue au vert (mobile et ordinateur).
+
+## 10. Corrections du lot 2 (22/11/2026)
+
+**Tests :**
+- Les nouveaux tests sont regroupés dans `AuditLot2Test` (backend) et `redirect.test.ts` (frontend).
+- **11 des 12 tests backend échouent sur l'ancien code** (vérifié). Le 12ᵉ (prestataire injoignable) garantit que la nouvelle version ne dégrade pas ce cas.
+
+| ID | Correction |
+|---|---|
+| S-10 | Identifiant normalisé (`77 111 22 33` = `+221771112233`, email en minuscules). En plus des limites par adresse IP : **30 essais par heure et par compte**, quelle que soit l'adresse. « Mot de passe oublié » : 5 demandes par heure et par adresse email |
+| S-12 | Laravel n'accepte que les noms d'hôte d'`APP_URL`, de `FRONTEND_URL` et de `TRUSTED_HOSTS` (hors poste de développement). Le serveur par défaut nginx `deploy/nginx/mk-default-deny.conf` refuse les autres noms |
+| S-13 | Index unique partiel sur le téléphone des comptes actifs. Le back-office normalise et vérifie le numéro (équipe et livreurs). Tri `NULLS LAST` conservé par prudence |
+| S-14 | Email passé en minuscules avant validation : inscription, équipe, livreurs |
+| S-15 | « Mot de passe oublié » d'un membre de l'équipe : règle de l'équipe (12 caractères, majuscules et minuscules) |
+| S-16 | Journal des échecs de connexion : empreinte HMAC avec la clé de l'application |
+| S-18 | Enregistrement d'un téléphone réservé à l'application (jeton Bearer, sinon `403 mobile_app_only`) ; réattribution inscrite au journal d'audit (`device.reassigned`) |
+| A-04 | Une commande à retirer en boutique refuse une zone de livraison (`pickup_has_no_zone`) |
+| A-05 | Confirmation d'un brouillon WhatsApp : zone encore desservie, minimum de commande de la zone, délai de préparation du jour |
+| A-06 | Paiement en ligne en trois temps : réservation sous verrou, appel au prestataire **hors verrou**, enregistrement sous verrou. Un double appui reçoit `409 payment_starting` (jamais deux sessions). Une tentative interrompue est close après 2 minutes |
+| A-07 | Rapprochement : les paiements les moins récemment vérifiés d'abord |
+| A-08 | Compteur « remboursements en attente » du tableau de bord sans les commandes de test. Stock et codes promo des commandes de test : sans effet hors préproduction, non modifiés |
+| W-02 | Retour de paiement : affichage conservé pendant chaque vérification, sans clignotement. Après 12 essais : message « Confirmation en attente » (« ne payez pas une seconde fois ») et bouton « Vérifier à nouveau » |
+| W-05 | `auto=1` retiré de l'adresse avant de partir chez le prestataire |
+| W-06 | Le panier est vidé à la fin d'une session. À la déconnexion, un bouton propose d'oublier les commandes suivies. La suppression du compte les oublie toujours |
+| W-07 | Redirection après connexion : origine de l'adresse comparée à celle du site |
+| Contrôle de mise en production | `mk:go-live-check` signale l'interrupteur « paiement en ligne réel » et la configuration Firebase (non bloquants) |
+
+**Résultats :**
+- Backend : 220/220. Frontend : 32/32.
+- Bout en bout : compte, parcours de commande, administration et back-office au vert, avec les valeurs de démonstration rétablies ensuite. Avec vos réglages locaux (paiement à la livraison actif, vrai numéro WhatsApp), les scénarios de paiement simulé échouent comme avant, sans lien avec ce lot.
+
+**À faire au déploiement :** installer `mk-default-deny.conf` sur le serveur (une fois).

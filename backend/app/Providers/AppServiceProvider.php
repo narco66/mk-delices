@@ -10,6 +10,7 @@ use App\Domain\Geo\Geocoder;
 use App\Domain\Geo\MapTilerGeocoder;
 use App\Domain\Geo\NullGeocoder;
 use App\Domain\Shared\Settings;
+use App\Http\Controllers\Api\V1\AuthController;
 use App\Models\User;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Model;
@@ -52,14 +53,19 @@ class AppServiceProvider extends ServiceProvider
         // Limitation de débit (SEC-007).
         $key = fn (Request $r) => $r->user()?->id ?: $r->ip();
         RateLimiter::for('api', fn (Request $r) => Limit::perMinute(120)->by($key($r)));
+        // Audit S-10 : identifiant normalisé (« 77 123 45 67 » = « +221771234567 », email en minuscules) et,
+        // en plus des limites par adresse IP, un plafond horaire PAR COMPTE quelle que soit l'adresse IP.
+        $identifier = fn (Request $r) => AuthController::normalizedIdentifier($r->input('login') ?? $r->input('email') ?? $r->input('phone'));
         RateLimiter::for('login', fn (Request $r) => [
-            Limit::perMinute(5)->by(mb_strtolower((string) ($r->input('login') ?? $r->input('email') ?? $r->input('phone'))).'|'.$r->ip()),
-            Limit::perMinute(20)->by($r->ip()),
+            Limit::perMinute(5)->by('login:'.$identifier($r).'|'.$r->ip()),
+            Limit::perHour(30)->by('login-account:'.$identifier($r)),
+            Limit::perMinute(20)->by('login-ip:'.$r->ip()),
         ]);
         // Mot de passe oublié : peu de demandes par adresse et par IP (pas d'envoi massif d'emails).
         RateLimiter::for('password-reset', fn (Request $r) => [
-            Limit::perMinute(5)->by(mb_strtolower((string) $r->input('email')).'|'.$r->ip()),
-            Limit::perHour(20)->by($r->ip()),
+            Limit::perMinute(5)->by('reset:'.$identifier($r).'|'.$r->ip()),
+            Limit::perHour(5)->by('reset-account:'.$identifier($r)),
+            Limit::perHour(20)->by('reset-ip:'.$r->ip()),
         ]);
         RateLimiter::for('cart', fn (Request $r) => Limit::perMinute(60)->by($key($r)));
         RateLimiter::for('checkout', fn (Request $r) => Limit::perMinute(20)->by($key($r)));

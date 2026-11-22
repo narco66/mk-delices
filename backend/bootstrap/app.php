@@ -39,6 +39,17 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->statefulApi();
+        // Audit S-12 : seuls les domaines du site (APP_URL, FRONTEND_URL, TRUSTED_HOSTS) sont acceptés dans
+        // l'en-tête Host, sur lequel sont construites les adresses d'image et d'aperçu. Inactif en local et
+        // pendant les tests (application mobile jointe par l'IP du poste).
+        $middleware->trustHosts(at: fn () => array_map(
+            fn (string $host) => '^'.preg_quote($host).'$',
+            array_values(array_unique(array_filter([
+                parse_url((string) config('app.url'), PHP_URL_HOST),
+                parse_url((string) config('mkdelices.frontend_url'), PHP_URL_HOST),
+                ...array_map('trim', explode(',', (string) config('mkdelices.trusted_hosts'))),
+            ]))),
+        ), subdomains: false);
         // Audit sécurité du 18/11/2026 : pas de redirection vers une route « login » inexistante (erreur 500)
         // quand un client de l'API n'envoie pas « Accept: application/json » ; l'API répond 401.
         $middleware->redirectGuestsTo(fn (Request $request) => $request->is('api/*') ? null : '/connexion');

@@ -68,7 +68,9 @@ Artisan::command('mk:vapid-keys', function () {
 /** Rapprochement planifié des paiements en attente (TRD §6). */
 Artisan::command('mk:reconcile-payments', function (PaymentService $payments) {
     $pending = Payment::query()->whereIn('status', [PaymentStatus::Initiated->value, PaymentStatus::Pending->value])
-        ->where('created_at', '<', now()->subMinutes(2))->limit(200)->get();
+        ->where('created_at', '<', now()->subMinutes(2))
+        // Audit A-07 : les moins récemment vérifiés d'abord, pour qu'aucune tentative ne soit oubliée.
+        ->orderByRaw('last_checked_at asc nulls first')->orderBy('created_at')->limit(200)->get();
     foreach ($pending as $payment) {
         $payments->reconcile($payment);
     }
@@ -182,6 +184,9 @@ Artisan::command('mk:go-live-check', function (Settings $settings, GatewayRegist
         [true, 'Adresse du site en HTTPS (APP_URL)', str_starts_with((string) config('app.url'), 'https://'), 'APP_URL=https://<domaine> (T1)'],
         [true, 'Simulateur de paiement inactif', ! config('mkdelices.payments.simulator_enabled'), 'PAYMENTS_SIMULATOR_ENABLED=false (P4)'],
         [true, 'Au moins un moyen de paiement réel ouvert aux clients', $customerMethods !== [], 'Configurer Wave (P1) ou activer le paiement à la livraison'],
+        // Interrupteur ajouté le 22/11/2026 (D-PAY-06) : coupé, seul le paiement à la livraison est proposé.
+        [false, 'Paiement en ligne réel activé', $gateways->onlinePaymentEnabled(), 'Paramètres › payments.online_enabled, une fois Wave contractualisé et testé (D-PAY-06)'],
+        [false, 'Notifications de l\'application mobile (Firebase)', filled(config('mkdelices.push.fcm.project_id')) && filled(config('mkdelices.push.fcm.credentials')), 'FCM_PROJECT_ID + FCM_CREDENTIALS (D-NOT-02)'],
         [true, 'Emails réellement envoyés', ! in_array(config('mail.default'), ['log', 'array'], true), 'MAIL_MAILER=smtp + SPF/DKIM (T3)'],
         [true, 'Raison sociale, NINEA, RCCM renseignés', $missingLegal === [], 'Paramètres manquants : '.implode(', ', $missingLegal).' (M5)'],
         [true, 'Pages publiées validées (juriste)', $pendingPages === [], 'Encore « à valider » : '.implode(', ', $pendingPages).' (M6)'],

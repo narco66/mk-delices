@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Domain\Shared\AuditLogger;
+use App\Domain\Shared\DomainException;
 use App\Http\Controllers\Controller;
 use App\Models\MobileDevice;
 use Illuminate\Http\JsonResponse;
@@ -19,6 +21,8 @@ class DeviceController extends Controller
 {
     private const MAX_DEVICES = 10;
 
+    public function __construct(private readonly AuditLogger $audit) {}
+
     public function store(Request $request): JsonResponse
     {
         $data = $request->validate([
@@ -28,14 +32,24 @@ class DeviceController extends Controller
         ]);
         $user = $request->user();
         $accessToken = $user->currentAccessToken();
-        // Le même téléphone peut changer de compte : l'enregistrement est réattribué au compte connecté.
-        $device = MobileDevice::query()->updateOrCreate(['token_hash' => MobileDevice::hashToken($data['token'])], [
+        // Audit S-18 : réservé à l'application (jeton Bearer). Un enregistrement fait depuis le site (session)
+        // ne serait lié à aucun jeton, donc jamais purgé à la déconnexion.
+        if (! $accessToken instanceof PersonalAccessToken) {
+            throw new DomainException('mobile_app_only', "Les notifications sur téléphone s'activent depuis l'application MK Délices.", 403);
+        }
+        $hash = MobileDevice::hashToken($data['token']);
+        $previousOwner = MobileDevice::query()->where('token_hash', $hash)->value('user_id');
+        // Le même téléphone peut changer de compte : l'enregistrement est réattribué au compte connecté (tracé).
+        $device = MobileDevice::query()->updateOrCreate(['token_hash' => $hash], [
             'user_id' => $user->id,
             'token' => $data['token'],
             'platform' => $data['platform'],
             'app_version' => $data['app_version'] ?? null,
-            'access_token_id' => $accessToken instanceof PersonalAccessToken ? $accessToken->id : null,
+            'access_token_id' => $accessToken->id,
         ]);
+        if ($previousOwner !== null && $previousOwner !== $user->id) {
+            $this->audit->log('device.reassigned', $device, ['user_id' => $previousOwner], ['user_id' => $user->id]);
+        }
         $keep = $user->mobileDevices()->latest('updated_at')->limit(self::MAX_DEVICES)->pluck('id');
         $user->mobileDevices()->whereNotIn('id', $keep)->delete();
 

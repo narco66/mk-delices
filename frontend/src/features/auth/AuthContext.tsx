@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createContext, useCallback, useContext, useMemo, type ReactNode } from 'react'
 import { api, ApiError } from '@/lib/api'
+import { orderStorage } from '@/lib/storage'
 import type { Me } from '@/types/api'
 
 interface AuthContextValue {
@@ -9,7 +10,8 @@ interface AuthContextValue {
   /** Identifiant : adresse email ou numéro de téléphone. */
   login: (identifier: string, password: string, remember?: boolean) => Promise<Me>
   register: (payload: Record<string, unknown>) => Promise<Me>
-  logout: () => Promise<void>
+  /** forgetDevice : efface aussi les liens de suivi mémorisés sur cet appareil (appareil partagé). */
+  logout: (options?: { forgetDevice?: boolean }) => Promise<void>
   can: (permission: string) => boolean
   hasRole: (...roles: string[]) => boolean
 }
@@ -53,8 +55,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [queryClient],
   )
 
-  const logout = useCallback(async () => {
+  const logout = useCallback(async (options?: { forgetDevice?: boolean }) => {
     await api.post('/auth/logout').catch(() => undefined)
+    // Audit W-06 : le panier est vidé par CartProvider à la fin de session ; les liens de suivi sur demande.
+    if (options?.forgetDevice) orderStorage.clear()
     queryClient.removeQueries({ predicate: (q) => q.queryKey[0] !== 'me' })
     queryClient.setQueryData(['me'], null)
   }, [queryClient])

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
+import { useAuth } from '@/features/auth/AuthContext'
 import { api, ApiError } from '@/lib/api'
 import { cartStorage, type StoredCart } from '@/lib/storage'
 import type { CartState } from '@/types/api'
@@ -115,6 +116,15 @@ export function CartProvider({ children }: { children: ReactNode }) {
     persist(null)
     queryClient.removeQueries({ queryKey: ['cart'] })
   }, [persist, queryClient])
+
+  // Audit W-06 : à la déconnexion (ou suppression du compte), le panier n'est pas laissé à la personne
+  // suivante sur un appareil partagé. Seule une session qui SE TERMINE vide le panier (pas un invité).
+  const { me } = useAuth()
+  const previousUserId = useRef<string | null>(null)
+  useEffect(() => {
+    if (previousUserId.current && !me) reset()
+    previousUserId.current = me?.id ?? null
+  }, [me, reset])
 
   const value = useMemo<CartContextValue>(
     () => ({

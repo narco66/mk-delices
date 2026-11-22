@@ -11,6 +11,8 @@
 return [
     'business_timezone' => env('APP_TIMEZONE_BUSINESS', 'Africa/Dakar'),
     'frontend_url' => env('FRONTEND_URL', 'http://localhost:5173'),
+    // Audit S-12 : noms d'hôte acceptés en plus de ceux d'APP_URL et FRONTEND_URL (séparés par des virgules).
+    'trusted_hosts' => env('TRUSTED_HOSTS', ''),
     // index.html du build frontend (pré-rendu SEO servi par SpaController).
     'spa_index_path' => env('SPA_INDEX_PATH', base_path('../frontend/dist/index.html')),
 

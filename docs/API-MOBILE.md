@@ -39,6 +39,7 @@ Réponse `201` :
 - Le jeton n'est renvoyé **qu'une fois** : le conserver dans le **stockage sécurisé** de l'appareil (Keychain iOS, Android Keystore / EncryptedSharedPreferences), jamais en clair ni dans les journaux.
 - Il expire au bout de **30 jours** (`expires_at`) : à l'expiration ou sur toute réponse `401`, renvoyer l'utilisateur vers l'écran de connexion.
 - `user.roles` / `user.permissions` servent à **afficher** les bons écrans ; le serveur revérifie toujours les droits.
+- **Tentatives limitées** (`429 too_many_requests`, en-tête `Retry-After`) : 5 par minute pour un identifiant depuis une même adresse, 20 par minute par adresse, et **30 par heure pour un même compte** quelle que soit l'adresse ou l'écriture du numéro (depuis le 22/11/2026). Afficher : « Trop de tentatives, réessayez plus tard ou utilisez Mot de passe oublié. »
 
 ### Inscription d'un client
 `POST /api/v1/auth/register` avec `first_name`, `last_name?`, `email`, `phone` (sénégalais), `password` (≥ 10 caractères, lettres et chiffres), `password_confirmation`, `accepted_privacy: true`, `marketing_consent?` **et `device_name`** → même réponse que la connexion (compte client + jeton).
@@ -78,7 +79,7 @@ Sécurité côté serveur : 5 tentatives de connexion par minute et par email ; 
 | Panier | `POST /cart` → `cart_id` + `cart_token` à conserver ; puis en-têtes `X-Cart-Id` / `X-Cart-Token` sur `GET /cart`, `POST /cart/items`, `PATCH|DELETE /cart/items/{id}`, `PUT /cart/promotion` |
 | Devis et créneaux | `POST /checkout/quote` `{ zone_id }` → montants calculés par le serveur + `slots` disponibles |
 | Commande | `POST /checkout/orders` avec en-têtes panier + **`Idempotency-Key`** (UUID généré une fois par tentative, réutilisé en cas de nouvel essai réseau) → `reference` + `tracking_token` |
-| Paiement | `POST /orders/{ref}/payments` `{ method }` + `Idempotency-Key` → `checkout_url` à ouvrir dans un **navigateur intégré** (SFSafariViewController / Custom Tabs) ; au retour : `POST /orders/{ref}/payments/refresh`, puis `GET /orders/{ref}/status` |
+| Paiement | `POST /orders/{ref}/payments` `{ method }` + `Idempotency-Key` → `checkout_url` à ouvrir dans un **navigateur intégré** (SFSafariViewController / Custom Tabs) ; au retour : `POST /orders/{ref}/payments/refresh`, puis `GET /orders/{ref}/status`. `409 payment_starting` : le paiement est déjà en cours d'ouverture (double appui) → réessayer après 2 à 3 s avec la **même** `Idempotency-Key` ; `503 psp_unavailable` : prestataire injoignable, la commande est conservée |
 | Suivi | `GET /orders/{ref}/status` ; annulation avant acceptation `POST /orders/{ref}/cancel` ; avis après livraison `POST /orders/{ref}/reviews` ; message WhatsApp prérempli `POST /orders/{ref}/whatsapp-draft` |
 | Factures | `GET /orders/{ref}/invoices/{numéro}` → PDF (liste dans `invoices` de la commande) |
 | Espace client | `GET /account/orders`, `PUT /account/profile`, `GET|POST /account/addresses`, `PUT|DELETE /account/addresses/{id}` |
@@ -112,7 +113,8 @@ Firebase Cloud Messaging (Android, et iOS via APNs). `GET /config` → `push.mob
 | Enregistrer le téléphone (après connexion, et à chaque nouveau jeton FCM) | `POST /account/devices` `{ token, platform: "android"|"ios", app_version? }` → `201` (ou `200` si déjà connu) avec `id` |
 | Désactiver les notifications sur ce téléphone | `DELETE /account/devices/{id}` |
 
-- L'enregistrement est lié au **jeton de connexion** : déconnexion, mot de passe changé ou compte désactivé le suppriment automatiquement. Un même téléphone qui change de compte est réattribué au dernier compte connecté. Au plus 10 téléphones par compte.
+- Réservé à l'application : la requête doit porter le jeton `Bearer` (sinon `403 mobile_app_only`).
+- L'enregistrement est lié au **jeton de connexion** : déconnexion, mot de passe changé ou compte désactivé le suppriment automatiquement. Un même téléphone qui change de compte est réattribué au dernier compte connecté (changement inscrit au journal d'audit). Au plus 10 téléphones par compte.
 - Le jeton FCM est chiffré en base et jamais renvoyé par l'API ; un jeton refusé par Firebase (application désinstallée) est supprimé.
 - **Contenu** : titre + texte sans donnée personnelle (ni nom, ni téléphone, ni adresse), et des données de navigation :
   - client : `{ type: "order_update", event: "order.accepted", reference, route: "/orders/{ref}" }` (événements : reçue, confirmée, refusée, prête, en route, livrée, annulée, livraison non aboutie, paiement confirmé) ;

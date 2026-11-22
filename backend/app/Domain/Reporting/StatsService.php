@@ -144,7 +144,9 @@ class StatsService
                     count(*) FILTER (WHERE payment_status = 'pending') AS payments_pending
              FROM orders WHERE is_test = false",
         );
-        $refunds = (int) DB::table('refunds')->whereIn('status', ['requested', 'approved'])->count();
+        // Audit A-08 : les remboursements des commandes de test (préproduction) ne sont pas comptés.
+        $refunds = (int) DB::table('refunds')->join('orders', 'orders.id', '=', 'refunds.order_id')
+            ->where('orders.is_test', false)->whereIn('refunds.status', ['requested', 'approved'])->count();
 
         return array_map('intval', (array) $row) + ['refunds_pending' => $refunds];
     }

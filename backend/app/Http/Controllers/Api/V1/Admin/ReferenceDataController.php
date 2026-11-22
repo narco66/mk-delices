@@ -8,6 +8,7 @@ use App\Domain\Shared\AuditLogger;
 use App\Domain\Shared\DomainException;
 use App\Domain\Shared\Phone;
 use App\Domain\Shared\Settings;
+use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Controller;
 use App\Models\Category;
 use App\Models\DeliveryPartner;
@@ -127,6 +128,7 @@ class ReferenceDataController extends Controller
     public function savePartner(Request $request, ?string $id = null): JsonResponse
     {
         $partner = $id ? DeliveryPartner::query()->with('user')->findOrFail($id) : null;
+        AuthController::lowercaseEmail($request);
         $data = $request->validate([
             'display_name' => ['required', 'string', 'max:120'],
             'phone' => ['required', 'string', 'max:30'],
@@ -140,6 +142,8 @@ class ReferenceDataController extends Controller
             'zone_ids.*' => ['uuid', 'exists:delivery_zones,id'],
         ]);
         $phone = Phone::normalizeSenegal($data['phone']) ?? throw DomainException::unprocessable('invalid_phone', 'Numéro de téléphone sénégalais invalide.');
+        // Audit S-13 : un numéro = un compte (le livreur se connecte aussi par téléphone).
+        AuthController::assertPhoneFree($phone, $partner?->user_id);
 
         $partner = DB::transaction(function () use ($partner, $data, $phone) {
             $user = $partner?->user ?? new User;

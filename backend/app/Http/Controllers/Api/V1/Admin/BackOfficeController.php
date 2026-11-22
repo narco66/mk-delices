@@ -6,7 +6,9 @@ use App\Domain\Customers\LoyaltyService;
 use App\Domain\Reporting\StatsService;
 use App\Domain\Shared\AuditLogger;
 use App\Domain\Shared\DomainException;
+use App\Domain\Shared\Phone;
 use App\Domain\Shared\Settings;
+use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\OrderResource;
 use App\Models\AuditLog;
@@ -21,7 +23,6 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
-use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
 use Spatie\Permission\Models\Role;
 
@@ -153,11 +154,12 @@ class BackOfficeController extends Controller
     public function saveUser(Request $request, ?string $id = null): JsonResponse
     {
         $user = $id ? User::query()->findOrFail($id) : new User;
+        AuthController::lowercaseEmail($request);
         $data = $request->validate([
             'name' => ['required', 'string', 'max:160'],
             'email' => ['required', 'email', 'max:160', Rule::unique('users', 'email')->ignore($user->id)],
             'phone' => ['nullable', 'string', 'max:30'],
-            'password' => [$user->exists ? 'nullable' : 'required', Password::min(12)->letters()->mixedCase()->numbers()],
+            'password' => [$user->exists ? 'nullable' : 'required', AuthController::staffPasswordRule()],
             'is_active' => ['boolean'],
             'roles' => ['required', 'array', 'min:1'],
             'roles.*' => ['string', Rule::in([User::ROLE_ADMIN, User::ROLE_COMMERCIAL, User::ROLE_PREPARATEUR, User::ROLE_RESP_LIVRAISON])],
@@ -170,9 +172,15 @@ class BackOfficeController extends Controller
         if ($user->exists && $user->hasAnyRole([User::ROLE_CLIENT, User::ROLE_LIVREUR])) {
             throw DomainException::unprocessable('not_staff_account', 'Ce compte n\'est pas un compte de l\'équipe : il se gère depuis l\'écran Livreurs ou par le client lui-même.');
         }
+        // Audit S-13 : numéro normalisé et unique, comme à l'inscription (connexion par téléphone).
+        $phone = null;
+        if (filled($data['phone'] ?? null)) {
+            $phone = Phone::normalizeSenegal($data['phone']) ?? throw DomainException::unprocessable('invalid_phone', 'Numéro de téléphone sénégalais invalide.');
+            AuthController::assertPhoneFree($phone, $user->id);
+        }
         $before = $user->exists ? ['roles' => $user->getRoleNames(), 'is_active' => $user->is_active] : null;
-        DB::transaction(function () use ($user, $data) {
-            $user->fill(['name' => $data['name'], 'email' => mb_strtolower($data['email']), 'phone' => $data['phone'] ?? null, 'is_active' => $data['is_active'] ?? true]);
+        DB::transaction(function () use ($user, $data, $phone) {
+            $user->fill(['name' => $data['name'], 'email' => mb_strtolower($data['email']), 'phone' => $phone, 'is_active' => $data['is_active'] ?? true]);
             if (! empty($data['password'])) {
                 $user->password = $data['password'];
             }

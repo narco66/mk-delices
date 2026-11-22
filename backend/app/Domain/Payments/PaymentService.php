@@ -44,61 +44,123 @@ class PaymentService
         }
         $gateway = $this->registry->get($method);
 
-        return DB::transaction(function () use ($order, $method, $gateway, $idempotencyKey) {
+        // 1) Sous verrou : contrôles et réservation de la tentative (statut « initiated », sans session).
+        $prepared = DB::transaction(function () use ($order, $method, $idempotencyKey) {
             /** @var Order $locked */
             $locked = Order::query()->lockForUpdate()->findOrFail($order->id);
-            if (! in_array($locked->status, [OrderStatus::PendingConfirmation, OrderStatus::Accepted], true)) {
-                throw DomainException::conflict('order_not_payable', 'Cette commande ne peut pas être payée dans son état actuel.');
-            }
-            if ($locked->payment_status === OrderPaymentStatus::Paid) {
-                throw DomainException::conflict('already_paid', 'Cette commande est déjà payée.');
-            }
+            $this->assertPayable($locked);
             $existing = Payment::query()->where('idempotency_key', $idempotencyKey)->first();
             if ($existing) {
                 if ($existing->order_id !== $locked->id) {
                     throw DomainException::conflict('idempotency_key_reused', 'Clé d\'idempotence déjà utilisée.');
                 }
 
-                return $existing;
+                return $this->settleUnstartedAttempt($existing) ?? $existing->fresh();
             }
             // Une seule session ouverte par commande et prestataire : on la réutilise (T-005).
             $open = Payment::query()->where('order_id', $locked->id)->where('provider', $method)
                 ->whereIn('status', [PaymentStatus::Initiated->value, PaymentStatus::Pending->value])
                 ->where(fn ($q) => $q->whereNull('expires_at')->orWhere('expires_at', '>', now()))
                 ->latest()->first();
-            if ($open) {
+            if ($open = $open ? $this->settleUnstartedAttempt($open) : null) {
                 return $open;
             }
 
-            $amount = $locked->total_xof - $locked->paid_xof;
-            $payment = Payment::query()->create([
+            return Payment::query()->create([
                 'order_id' => $locked->id,
                 'provider' => $method,
                 'status' => PaymentStatus::Initiated,
-                'amount_xof' => $amount,
+                'amount_xof' => $locked->total_xof - $locked->paid_xof,
                 'currency' => 'XOF',
                 'idempotency_key' => $idempotencyKey,
                 'is_simulated' => $method === 'simulator',
             ]);
-            try {
-                $session = $gateway->createSession($payment, $locked);
-            } catch (GatewayUnavailable $e) {
-                throw new DomainException('psp_unavailable', 'Le service de paiement est momentanément indisponible. Votre commande est conservée.', 503);
-            }
+        });
+        if ($prepared->status !== PaymentStatus::Initiated || $prepared->checkout_url !== null) {
+            return $prepared;
+        }
+
+        // 2) Hors verrou (audit A-06) : l'appel au prestataire (jusqu'à 15 s) ne bloque ni les webhooks ni
+        // le back-office. Tant que la tentative est « initiated », le montant de la commande ne peut pas
+        // changer (hasOpenOnlineSession) : la session est créée pour le bon montant.
+        try {
+            $session = $gateway->createSession($prepared, $order->fresh());
+        } catch (GatewayUnavailable) {
+            // Aucune session n'existe chez le prestataire : la tentative est retirée, un nouvel essai repart de zéro.
+            $prepared->delete();
+
+            throw new DomainException('psp_unavailable', 'Le service de paiement est momentanément indisponible. Votre commande est conservée.', 503);
+        }
+
+        // 3) Sous verrou : la commande a pu être annulée ou payée pendant l'appel.
+        $result = DB::transaction(function () use ($prepared, $session, $method) {
+            /** @var Order $locked */
+            $locked = Order::query()->lockForUpdate()->findOrFail($prepared->order_id);
+            $payment = Payment::query()->lockForUpdate()->findOrFail($prepared->id);
             $payment->update([
-                'status' => PaymentStatus::Pending,
                 'provider_reference' => $session->providerReference,
                 'checkout_url' => $session->checkoutUrl,
                 'expires_at' => $session->expiresAt,
             ]);
+            // Refus enregistré (session close de notre côté, référence conservée pour le rapprochement),
+            // puis signalé après validation de la transaction.
+            if ($refusal = $this->payabilityError($locked)) {
+                $payment->update(['status' => PaymentStatus::Cancelled, 'failure_reason' => 'order_not_payable']);
+
+                return $refusal;
+            }
+            $payment->update(['status' => PaymentStatus::Pending]);
             // Audit E4 : une tentative en ligne (peut-être abandonnée) ne remplace jamais « paiement à la livraison » :
             // le livreur doit toujours savoir qu'il a un montant à encaisser.
             $locked->update(['payment_status' => OrderPaymentStatus::Pending]
                 + ($locked->payment_method === GatewayRegistry::CASH_ON_DELIVERY ? [] : ['payment_method' => $method]));
-            $this->journal->record($locked, 'payment', null, null, ['event' => 'payment.initiated', 'provider' => $method, 'amount_xof' => $amount, 'payment_id' => $payment->id]);
+            $this->journal->record($locked, 'payment', null, null, ['event' => 'payment.initiated', 'provider' => $method, 'amount_xof' => $payment->amount_xof, 'payment_id' => $payment->id]);
 
             return $payment;
         });
+        if ($result instanceof DomainException) {
+            throw $result;
+        }
+
+        return $result;
+    }
+
+    /** Délai au-delà duquel une tentative restée sans session (processus interrompu) est abandonnée. */
+    private const SESSION_CREATION_GRACE_MINUTES = 2;
+
+    /**
+     * Tentative « initiated » sans session : une autre requête est en train d'appeler le prestataire
+     * (refus temporaire, jamais deux sessions), ou le processus a été interrompu (tentative close, null).
+     * Toute autre tentative est renvoyée telle quelle.
+     */
+    private function settleUnstartedAttempt(Payment $payment): ?Payment
+    {
+        if ($payment->status !== PaymentStatus::Initiated || $payment->checkout_url !== null) {
+            return $payment;
+        }
+        if ($payment->created_at->gt(now()->subMinutes(self::SESSION_CREATION_GRACE_MINUTES))) {
+            throw DomainException::conflict('payment_starting', 'Le paiement est en cours d\'ouverture. Réessayez dans quelques secondes.');
+        }
+        $payment->update(['status' => PaymentStatus::Failed, 'failure_reason' => 'session_not_created']);
+
+        return null;
+    }
+
+    /** La commande peut-elle être payée en ligne ? (à appeler sous verrou) */
+    private function assertPayable(Order $locked): void
+    {
+        if ($error = $this->payabilityError($locked)) {
+            throw $error;
+        }
+    }
+
+    private function payabilityError(Order $locked): ?DomainException
+    {
+        return match (true) {
+            ! in_array($locked->status, [OrderStatus::PendingConfirmation, OrderStatus::Accepted], true) => DomainException::conflict('order_not_payable', 'Cette commande ne peut pas être payée dans son état actuel.'),
+            $locked->payment_status === OrderPaymentStatus::Paid => DomainException::conflict('already_paid', 'Cette commande est déjà payée.'),
+            default => null,
+        };
     }
 
     /**
